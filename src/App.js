@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import StartMenu from './components/StartMenu';
 
 // Main App component for the Doodle Jump game
+
+
+// Main App component for the Doodle Jump game
 const App = () => {
   // Use a ref to access the canvas element
   const canvasRef = useRef(null);
@@ -27,6 +30,7 @@ const App = () => {
   // Game settings
   const gravity = 0.5;
   const jumpForce = -12;
+  const superJumpForce = -25; // Extra jump force for the spring
   const platformCount = 10;
   const platformGap = 60;
   const platformWidth = 80;
@@ -36,19 +40,62 @@ const App = () => {
   // Key state for player horizontal movement
   const keys = useRef({});
 
-  // Initialize the game when the component mounts
-  useEffect(() => {
-    if (!isGameStarted) return; // Don't initialize if game hasn't started yet
-
-    // Set up the initial platforms
-    const initialPlatforms = [];
-    for (let i = 0; i < platformCount; i++) {
-      initialPlatforms.push({
+  // Function to create a new platform with a random type
+  const createPlatform = (y) => {
+    const platformType = Math.random();
+    let platform = {};
+    if (platformType < 0.7) {
+      // 70% chance of a static platform
+      platform = {
         x: Math.random() * (400 - platformWidth),
-        y: 500 - (i * platformGap) - 50,
+        y: y,
         width: platformWidth,
         height: platformHeight,
-      });
+        type: 'static',
+      };
+    } else if (platformType < 0.9) {
+      // 20% chance of a moving platform
+      platform = {
+        x: Math.random() * (400 - platformWidth),
+        y: y,
+        width: platformWidth,
+        height: platformHeight,
+        type: 'moving',
+        vx: 1.5,
+      };
+    } else {
+      // 10% chance of a breakable platform
+      platform = {
+        x: Math.random() * (400 - platformWidth),
+        y: y,
+        width: platformWidth,
+        height: platformHeight,
+        type: 'breakable',
+        isBroken: false,
+      };
+    }
+
+    // Add a spring power-up with a 15% chance
+    if (Math.random() < 0.15) {
+      platform.powerUp = {
+        x: platform.x + platform.width / 2 - 10,
+        y: platform.y - 20,
+        width: 20,
+        height: 20,
+        type: 'spring',
+      };
+    }
+
+    return platform;
+  };
+
+  // Initialize the game when the component mounts or starts
+  useEffect(() => {
+    if (!isGameStarted) return;
+
+    const initialPlatforms = [];
+    for (let i = 0; i < platformCount; i++) {
+      initialPlatforms.push(createPlatform(500 - (i * platformGap) - 50));
     }
     setGameState(prev => ({
       ...prev,
@@ -58,7 +105,7 @@ const App = () => {
 
   // Set up keyboard event listeners for player movement
   useEffect(() => {
-    if (!isGameStarted) return; // Only listen for keys when game is active
+    if (!isGameStarted) return;
 
     const handleKeyDown = (e) => {
       keys.current[e.key] = true;
@@ -70,7 +117,6 @@ const App = () => {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    // Clean up event listeners on component unmount
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
@@ -90,7 +136,7 @@ const App = () => {
     const gameLoop = () => {
       setGameState(prev => {
         const newPlayer = { ...prev.player };
-        const newPlatforms = [...prev.platforms];
+        let newPlatforms = [...prev.platforms];
         let newScore = prev.score;
         let gameOver = false;
 
@@ -108,7 +154,7 @@ const App = () => {
         newPlayer.y += newPlayer.vy;
         newPlayer.vy += gravity;
 
-        // Wrap player position around the screen horizontally
+        // Wrap player position horizontally
         if (newPlayer.x > canvas.width) newPlayer.x = -newPlayer.width;
         if (newPlayer.x < -newPlayer.width) newPlayer.x = canvas.width;
 
@@ -117,8 +163,20 @@ const App = () => {
           gameOver = true;
         }
 
+        // Update moving platforms' positions
+        newPlatforms = newPlatforms.map(platform => {
+          if (platform.type === 'moving') {
+            platform.x += platform.vx;
+            // Reverse direction if platform hits the canvas edges
+            if (platform.x <= 0 || platform.x + platform.width >= canvas.width) {
+              platform.vx *= -1;
+            }
+          }
+          return platform;
+        });
+
         // Check for platform collisions
-        newPlatforms.forEach(platform => {
+        newPlatforms.forEach((platform, index) => {
           // AABB collision detection
           if (
             newPlayer.vy > 0 && // Player is falling
@@ -127,7 +185,17 @@ const App = () => {
             newPlayer.y + newPlayer.height < platform.y + platform.height &&
             newPlayer.y + newPlayer.height > platform.y
           ) {
-            newPlayer.vy = jumpForce; // Jump!
+            if (platform.type !== 'breakable') {
+              newPlayer.vy = jumpForce; // Jump!
+            } else {
+              // Breakable platform disappears after one jump
+              newPlatforms.splice(index, 1);
+            }
+            // Check for power-up collision on the platform
+            if (platform.powerUp && platform.powerUp.type === 'spring') {
+              newPlayer.vy = superJumpForce; // Super jump!
+              delete platform.powerUp; // Remove the power-up after use
+            }
           }
         });
 
@@ -136,19 +204,19 @@ const App = () => {
           const shiftAmount = -newPlayer.vy;
           newPlayer.y = canvas.height / 2;
           newScore += shiftAmount;
-          newPlatforms.forEach(p => (p.y += shiftAmount));
+          newPlatforms.forEach(p => {
+            p.y += shiftAmount;
+            if (p.powerUp) {
+              p.powerUp.y += shiftAmount;
+            }
+          });
         }
 
         // Remove off-screen platforms and add new ones
         const visiblePlatforms = newPlatforms.filter(p => p.y < canvas.height);
         while (visiblePlatforms.length < platformCount) {
           const lastPlatform = visiblePlatforms[visiblePlatforms.length - 1];
-          visiblePlatforms.push({
-            x: Math.random() * (400 - platformWidth),
-            y: lastPlatform.y - platformGap - (Math.random() * 20),
-            width: platformWidth,
-            height: platformHeight,
-          });
+          visiblePlatforms.push(createPlatform(lastPlatform.y - platformGap - (Math.random() * 20)));
         }
 
         return {
@@ -164,7 +232,6 @@ const App = () => {
 
     animationFrameId = requestAnimationFrame(gameLoop);
 
-    // Clean up the animation frame on component unmount or game over
     return () => cancelAnimationFrame(animationFrameId);
   }, [isGameStarted, gameState.isGameOver]);
 
@@ -176,26 +243,31 @@ const App = () => {
     if (!canvas) return;
     const context = canvas.getContext('2d');
 
-    // Drawing function
     const draw = () => {
-      // Clear the canvas
       context.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Draw background
       context.fillStyle = '#f0f8ff';
       context.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw player
       context.fillStyle = '#4CAF50';
       context.fillRect(gameState.player.x, gameState.player.y, gameState.player.width, gameState.player.height);
 
-      // Draw platforms
-      context.fillStyle = '#654321';
       gameState.platforms.forEach(platform => {
+        if (platform.type === 'static') {
+          context.fillStyle = '#654321';
+        } else if (platform.type === 'moving') {
+          context.fillStyle = '#FFC107'; // Yellow for moving platforms
+        } else if (platform.type === 'breakable') {
+          context.fillStyle = '#F44336'; // Red for breakable platforms
+        }
         context.fillRect(platform.x, platform.y, platform.width, platform.height);
+
+        // Draw the power-up if it exists
+        if (platform.powerUp) {
+          context.fillStyle = '#00FFFF'; // A bright color for the spring
+          context.fillRect(platform.powerUp.x, platform.powerUp.y, platform.powerUp.width, platform.powerUp.height);
+        }
       });
 
-      // Draw score
       context.fillStyle = '#333';
       context.font = '24px Inter, sans-serif';
       context.textAlign = 'center';
@@ -221,12 +293,10 @@ const App = () => {
       score: 0,
       isGameOver: false,
     });
-    // Start the game again
     setIsGameStarted(true);
   };
 
-
-   return (
+  return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
       <div className="bg-white rounded-xl shadow-lg p-6 flex flex-col items-center relative">
         <h1 className="text-3xl font-bold text-gray-800 mb-4">Doodle Jump</h1>
