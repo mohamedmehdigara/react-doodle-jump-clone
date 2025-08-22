@@ -1,8 +1,160 @@
 import React, { useState, useEffect, useRef } from 'react';
-import StartMenu from './components/StartMenu';
-import GameOverMenu from './components/GameOverMenu';
+import styled from 'styled-components';
 
-// Main App component for the Doodle Jump game
+// ===================================
+// STYLED COMPONENTS FOR ALL MENUS
+// ===================================
+
+const MenuContainer = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  z-index: 10;
+`;
+
+const DarkMenuContainer = styled(MenuContainer)`
+  background-color: #1f2937;
+  color: white;
+`;
+
+const Title = styled.h2`
+  font-size: 2.25rem;
+  font-weight: 800;
+  color: #1f2937;
+  margin-bottom: 8px;
+`;
+
+const DarkTitle = styled.h2`
+  font-size: 1.875rem;
+  font-weight: bold;
+  margin-bottom: 8px;
+`;
+
+const InstructionText = styled.p`
+  color: #4b5563;
+  margin-bottom: 8px;
+`;
+
+const ScoreText = styled.p`
+  color: #4b5563;
+  margin-bottom: 24px;
+  font-weight: 600;
+`;
+
+const Button = styled.button`
+  margin-top: 16px;
+  padding: 12px 32px;
+  background-color: #22c55e;
+  color: white;
+  font-weight: bold;
+  border-radius: 9999px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+
+  &:hover {
+    background-color: #16a34a;
+    transform: scale(1.05);
+  }
+`;
+
+const BlueButton = styled(Button)`
+  background-color: #3b82f6;
+  &:hover {
+    background-color: #2563eb;
+  }
+`;
+
+const ScoreList = styled.ol`
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+`;
+
+const ScoreItem = styled.li`
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 1.125rem;
+  font-weight: 500;
+  
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+// ===================================
+// START MENU COMPONENT
+// ===================================
+const StartMenu = ({ onStart, highScore }) => {
+  return (
+    <MenuContainer>
+      <Title>Doodle Jump</Title>
+      <InstructionText>
+        Use the left and right arrow keys or 'A' and 'D' to move.
+      </InstructionText>
+      <ScoreText>
+        High Score: {highScore}
+      </ScoreText>
+      <Button onClick={onStart}>
+        Start Game
+      </Button>
+    </MenuContainer>
+  );
+};
+
+// ===================================
+// GAME OVER MENU COMPONENT
+// ===================================
+const GameOverMenu = ({ finalScore, highScore, onRestart, onShowLeaderboard }) => {
+  return (
+    <DarkMenuContainer>
+      <DarkTitle>Game Over!</DarkTitle>
+      <ScoreText>Final Score: {finalScore}</ScoreText>
+      <ScoreText>High Score: {highScore}</ScoreText>
+      <BlueButton onClick={onRestart}>
+        Play Again
+      </BlueButton>
+      <BlueButton onClick={onShowLeaderboard} style={{ marginTop: '10px' }}>
+        Show Leaderboard
+      </BlueButton>
+    </DarkMenuContainer>
+  );
+};
+
+// ===================================
+// LEADERBOARD COMPONENT
+// ===================================
+const Leaderboard = ({ scores, onBack }) => {
+  return (
+    <MenuContainer>
+      <Title>Leaderboard</Title>
+      <ScoreList>
+        {scores.map((item, index) => (
+          <ScoreItem key={index}>
+            <span>{index + 1}. {item.name}</span>
+            <span>{item.score}</span>
+          </ScoreItem>
+        ))}
+      </ScoreList>
+      <Button onClick={onBack}>Back to Main Menu</Button>
+    </MenuContainer>
+  );
+};
+
+// ===================================
+// MAIN APP COMPONENT
+// ===================================
 const App = () => {
   // Use a ref to access the canvas element
   const canvasRef = useRef(null);
@@ -28,8 +180,9 @@ const App = () => {
     multiplierTimer: 0, // New: Countdown for the multiplier duration
   });
 
-  // State to control whether the game is running or if the menu is showing
+  // State to control which screen is visible
   const [isGameStarted, setIsGameStarted] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
 
   // Game settings
   const gravity = 0.5;
@@ -43,6 +196,15 @@ const App = () => {
 
   // Key state for player horizontal movement
   const keys = useRef({});
+  
+  // Dummy scores for the leaderboard
+  const dummyScores = [
+    { name: "Player 1", score: 1540 },
+    { name: "Player 2", score: 1320 },
+    { name: "Player 3", score: 1150 },
+    { name: "Player 4", score: 980 },
+    { name: "Player 5", score: 760 },
+  ];
 
   // Function to create a new platform with a random type and power-up
   const createPlatform = (y) => {
@@ -441,9 +603,9 @@ const App = () => {
       multiplierTimer: 0,
     });
     setIsGameStarted(true);
+    setShowLeaderboard(false);
   };
   
-
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
       <div className="bg-white rounded-xl shadow-lg p-6 flex flex-col items-center relative">
@@ -455,12 +617,22 @@ const App = () => {
           className="rounded-lg shadow-inner border-4 border-gray-300"
           style={{ backgroundColor: '#f0f8ff' }}
         />
-        {!isGameStarted && <StartMenu onStart={() => setIsGameStarted(true)} highScore={gameState.highScore} />}
-        {gameState.isGameOver && (
+        {/* Render the appropriate menu based on game state */}
+        {!isGameStarted && !showLeaderboard && (
+          <StartMenu onStart={() => setIsGameStarted(true)} highScore={gameState.highScore} />
+        )}
+        {gameState.isGameOver && !showLeaderboard && (
           <GameOverMenu
             finalScore={Math.floor(gameState.score / 10)}
             highScore={gameState.highScore}
             onRestart={resetGame}
+            onShowLeaderboard={() => setShowLeaderboard(true)}
+          />
+        )}
+        {showLeaderboard && (
+          <Leaderboard
+            scores={dummyScores}
+            onBack={() => setShowLeaderboard(false)}
           />
         )}
       </div>
