@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import StartMenu from './components/StartMenu';
-
-// Main App component for the Doodle Jump game
-
+import GameOverMenu from './components/GameOverMenu';
 
 // Main App component for the Doodle Jump game
 const App = () => {
@@ -19,9 +17,15 @@ const App = () => {
       width: 40,
       height: 40,
     },
-    platforms: [], // Array to hold all platforms
-    score: 0,      // Player's score
+    platforms: [],    // Array to hold all platforms
+    enemies: [],      // Array to hold enemy monsters
+    score: 0,         // Player's current score
+    highScore: 0,     // Highest score achieved, loaded from local storage
     isGameOver: false,
+    isShielded: false, // New: Is the player currently shielded?
+    shieldTimer: 0,    // New: Countdown for the shield duration
+    scoreMultiplier: 1, // New: Score multiplier (1x by default)
+    multiplierTimer: 0, // New: Countdown for the multiplier duration
   });
 
   // State to control whether the game is running or if the menu is showing
@@ -40,66 +44,75 @@ const App = () => {
   // Key state for player horizontal movement
   const keys = useRef({});
 
-  // Function to create a new platform with a random type
+  // Function to create a new platform with a random type and power-up
   const createPlatform = (y) => {
     const platformType = Math.random();
     let platform = {};
-    if (platformType < 0.7) {
-      // 70% chance of a static platform
-      platform = {
-        x: Math.random() * (400 - platformWidth),
-        y: y,
-        width: platformWidth,
-        height: platformHeight,
-        type: 'static',
-      };
-    } else if (platformType < 0.9) {
-      // 20% chance of a moving platform
-      platform = {
-        x: Math.random() * (400 - platformWidth),
-        y: y,
-        width: platformWidth,
-        height: platformHeight,
-        type: 'moving',
-        vx: 1.5,
-      };
+
+    if (platformType < 0.6) {
+      // 60% chance of a static platform
+      platform = { x: Math.random() * (400 - platformWidth), y, width: platformWidth, height: platformHeight, type: 'static' };
+    } else if (platformType < 0.85) {
+      // 25% chance of a moving platform
+      platform = { x: Math.random() * (400 - platformWidth), y, width: platformWidth, height: platformHeight, type: 'moving', vx: 1.5 };
     } else {
-      // 10% chance of a breakable platform
-      platform = {
-        x: Math.random() * (400 - platformWidth),
-        y: y,
-        width: platformWidth,
-        height: platformHeight,
-        type: 'breakable',
-        isBroken: false,
-      };
+      // 15% chance of a breakable platform
+      platform = { x: Math.random() * (400 - platformWidth), y, width: platformWidth, height: platformHeight, type: 'breakable', isBroken: false };
     }
 
-    // Add a spring power-up with a 15% chance
-    if (Math.random() < 0.15) {
-      platform.powerUp = {
-        x: platform.x + platform.width / 2 - 10,
-        y: platform.y - 20,
-        width: 20,
-        height: 20,
-        type: 'spring',
-      };
+    // Add a power-up with a 10% chance
+    if (Math.random() < 0.1) {
+      const powerUpType = Math.random();
+      if (powerUpType < 0.5) {
+        // 50% chance for a spring
+        platform.powerUp = { x: platform.x + platform.width / 2 - 10, y: platform.y - 20, width: 20, height: 20, type: 'spring' };
+      } else if (powerUpType < 0.8) {
+        // 30% chance for a shield
+        platform.powerUp = { x: platform.x + platform.width / 2 - 10, y: platform.y - 20, width: 20, height: 20, type: 'shield' };
+      } else {
+        // 20% chance for a score multiplier
+        platform.powerUp = { x: platform.x + platform.width / 2 - 10, y: platform.y - 20, width: 20, height: 20, type: 'multiplier' };
+      }
     }
 
     return platform;
   };
 
-  // Initialize the game when the component mounts or starts
+  // Function to create a new enemy with a random position
+  const createEnemy = (y) => {
+    return {
+      x: Math.random() * (400 - 30),
+      y: y,
+      width: 30,
+      height: 30,
+      vx: Math.random() > 0.5 ? 1 : -1, // Random initial direction
+    };
+  };
+
+  // Initialize the game, load high score, and set up platforms/enemies
   useEffect(() => {
+    // Load high score from local storage on first render
+    const storedHighScore = localStorage.getItem('doodleJumpHighScore');
+    if (storedHighScore) {
+      setGameState(prev => ({ ...prev, highScore: parseInt(storedHighScore, 10) }));
+    }
+
     if (!isGameStarted) return;
 
     const initialPlatforms = [];
+    const initialEnemies = [];
     for (let i = 0; i < platformCount; i++) {
-      initialPlatforms.push(createPlatform(500 - (i * platformGap) - 50));
+      const newPlatform = createPlatform(500 - (i * platformGap) - 50);
+      initialPlatforms.push(newPlatform);
+      // New: Add an enemy randomly
+      if (Math.random() < 0.2) {
+        initialEnemies.push(createEnemy(newPlatform.y - 50));
+      }
     }
     setGameState(prev => ({
       ...prev,
       platforms: initialPlatforms,
+      enemies: initialEnemies,
     }));
   }, [isGameStarted]);
 
@@ -129,16 +142,21 @@ const App = () => {
 
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const context = canvas.getContext('2d');
-
+    
     let animationFrameId;
 
     const gameLoop = () => {
       setGameState(prev => {
         const newPlayer = { ...prev.player };
         let newPlatforms = [...prev.platforms];
+        let newEnemies = [...prev.enemies];
         let newScore = prev.score;
+        let newHighScore = prev.highScore;
         let gameOver = false;
+        let isShielded = prev.isShielded;
+        let shieldTimer = prev.shieldTimer;
+        let scoreMultiplier = prev.scoreMultiplier;
+        let multiplierTimer = prev.multiplierTimer;
 
         // Player movement based on key input
         if (keys.current['ArrowLeft'] || keys.current['a']) {
@@ -161,13 +179,32 @@ const App = () => {
         // Check for player falling off the bottom
         if (newPlayer.y > canvas.height) {
           gameOver = true;
+          // Update high score if current score is greater
+          if (Math.floor(newScore / 10) > newHighScore) {
+            newHighScore = Math.floor(newScore / 10);
+            localStorage.setItem('doodleJumpHighScore', newHighScore);
+          }
         }
+        
+        // --- Power-up Timers ---
+        if (isShielded) {
+          shieldTimer--;
+          if (shieldTimer <= 0) {
+            isShielded = false;
+          }
+        }
+        if (scoreMultiplier > 1) {
+          multiplierTimer--;
+          if (multiplierTimer <= 0) {
+            scoreMultiplier = 1;
+          }
+        }
+        // --- End Power-up Timers ---
 
         // Update moving platforms' positions
         newPlatforms = newPlatforms.map(platform => {
           if (platform.type === 'moving') {
             platform.x += platform.vx;
-            // Reverse direction if platform hits the canvas edges
             if (platform.x <= 0 || platform.x + platform.width >= canvas.width) {
               platform.vx *= -1;
             }
@@ -175,26 +212,61 @@ const App = () => {
           return platform;
         });
 
+        // Update enemy positions
+        newEnemies = newEnemies.map(enemy => {
+          enemy.x += enemy.vx;
+          if (enemy.x <= 0 || enemy.x + enemy.width >= canvas.width) {
+            enemy.vx *= -1;
+          }
+          return enemy;
+        });
+
         // Check for platform collisions
         newPlatforms.forEach((platform, index) => {
-          // AABB collision detection
           if (
-            newPlayer.vy > 0 && // Player is falling
+            newPlayer.vy > 0 &&
             newPlayer.x < platform.x + platform.width &&
             newPlayer.x + newPlayer.width > platform.x &&
             newPlayer.y + newPlayer.height < platform.y + platform.height &&
             newPlayer.y + newPlayer.height > platform.y
           ) {
             if (platform.type !== 'breakable') {
-              newPlayer.vy = jumpForce; // Jump!
+              newPlayer.vy = jumpForce;
             } else {
-              // Breakable platform disappears after one jump
               newPlatforms.splice(index, 1);
             }
-            // Check for power-up collision on the platform
-            if (platform.powerUp && platform.powerUp.type === 'spring') {
-              newPlayer.vy = superJumpForce; // Super jump!
-              delete platform.powerUp; // Remove the power-up after use
+
+            // --- Power-up activation ---
+            if (platform.powerUp) {
+              if (platform.powerUp.type === 'spring') {
+                newPlayer.vy = superJumpForce;
+              } else if (platform.powerUp.type === 'shield') {
+                isShielded = true;
+                shieldTimer = 300; // 5 seconds at 60fps
+              } else if (platform.powerUp.type === 'multiplier') {
+                scoreMultiplier = 2;
+                multiplierTimer = 300; // 5 seconds
+              }
+              delete platform.powerUp;
+            }
+          }
+        });
+
+        // Check for enemy collisions
+        newEnemies.forEach(enemy => {
+          if (
+            newPlayer.x < enemy.x + enemy.width &&
+            newPlayer.x + newPlayer.width > enemy.x &&
+            newPlayer.y < enemy.y + enemy.height &&
+            newPlayer.y + newPlayer.height > enemy.y
+          ) {
+            // New: Only end the game if the player is NOT shielded
+            if (!isShielded) {
+              gameOver = true;
+              if (Math.floor(newScore / 10) > newHighScore) {
+                newHighScore = Math.floor(newScore / 10);
+                localStorage.setItem('doodleJumpHighScore', newHighScore);
+              }
             }
           }
         });
@@ -203,28 +275,44 @@ const App = () => {
         if (newPlayer.y < canvas.height / 2 && newPlayer.vy < 0) {
           const shiftAmount = -newPlayer.vy;
           newPlayer.y = canvas.height / 2;
-          newScore += shiftAmount;
+          // Apply the score multiplier
+          newScore += shiftAmount * scoreMultiplier;
           newPlatforms.forEach(p => {
             p.y += shiftAmount;
             if (p.powerUp) {
               p.powerUp.y += shiftAmount;
             }
           });
+          // Shift enemies as well
+          newEnemies.forEach(e => (e.y += shiftAmount));
         }
 
-        // Remove off-screen platforms and add new ones
+        // Remove off-screen platforms/enemies and add new ones
         const visiblePlatforms = newPlatforms.filter(p => p.y < canvas.height);
+        const visibleEnemies = newEnemies.filter(e => e.y < canvas.height);
+
         while (visiblePlatforms.length < platformCount) {
           const lastPlatform = visiblePlatforms[visiblePlatforms.length - 1];
-          visiblePlatforms.push(createPlatform(lastPlatform.y - platformGap - (Math.random() * 20)));
+          const newY = lastPlatform.y - platformGap - (Math.random() * 20);
+          const newPlatform = createPlatform(newY);
+          visiblePlatforms.push(newPlatform);
+          if (Math.random() < 0.2) { // Chance to add a new enemy
+            visibleEnemies.push(createEnemy(newPlatform.y - 50));
+          }
         }
 
         return {
           ...prev,
           player: newPlayer,
           platforms: visiblePlatforms,
+          enemies: visibleEnemies,
           score: newScore,
+          highScore: newHighScore,
           isGameOver: gameOver,
+          isShielded,
+          shieldTimer,
+          scoreMultiplier,
+          multiplierTimer,
         };
       });
       animationFrameId = requestAnimationFrame(gameLoop);
@@ -248,9 +336,25 @@ const App = () => {
       context.fillStyle = '#f0f8ff';
       context.fillRect(0, 0, canvas.width, canvas.height);
 
+      // Draw the player
       context.fillStyle = '#4CAF50';
       context.fillRect(gameState.player.x, gameState.player.y, gameState.player.width, gameState.player.height);
 
+      // Draw shield if active
+      if (gameState.isShielded) {
+        context.fillStyle = 'rgba(0, 255, 255, 0.4)'; // Cyan with transparency
+        context.beginPath();
+        context.arc(
+          gameState.player.x + gameState.player.width / 2,
+          gameState.player.y + gameState.player.height / 2,
+          gameState.player.width * 0.8,
+          0,
+          2 * Math.PI
+        );
+        context.fill();
+      }
+
+      // Draw platforms and power-ups
       gameState.platforms.forEach(platform => {
         if (platform.type === 'static') {
           context.fillStyle = '#654321';
@@ -261,17 +365,54 @@ const App = () => {
         }
         context.fillRect(platform.x, platform.y, platform.width, platform.height);
 
-        // Draw the power-up if it exists
         if (platform.powerUp) {
-          context.fillStyle = '#00FFFF'; // A bright color for the spring
-          context.fillRect(platform.powerUp.x, platform.powerUp.y, platform.powerUp.width, platform.powerUp.height);
+          if (platform.powerUp.type === 'spring') {
+            context.fillStyle = '#00FFFF';
+            context.fillRect(platform.powerUp.x, platform.powerUp.y, platform.powerUp.width, platform.powerUp.height);
+          } else if (platform.powerUp.type === 'shield') {
+            context.fillStyle = '#0000FF'; // Blue for shield
+            context.beginPath();
+            context.arc(
+              platform.powerUp.x + platform.powerUp.width / 2,
+              platform.powerUp.y + platform.powerUp.height / 2,
+              platform.powerUp.width / 2,
+              0,
+              2 * Math.PI
+            );
+            context.fill();
+          } else if (platform.powerUp.type === 'multiplier') {
+            context.fillStyle = '#FFD700'; // Gold for multiplier
+            context.font = '16px Inter, sans-serif';
+            context.textAlign = 'center';
+            context.fillText('2x', platform.powerUp.x + platform.powerUp.width / 2, platform.powerUp.y + platform.powerUp.height - 5);
+          }
         }
       });
 
+      // Draw the enemies
+      gameState.enemies.forEach(enemy => {
+        context.fillStyle = '#8A2BE2'; // Purple for monsters
+        context.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+      });
+
+      // Draw the scores
       context.fillStyle = '#333';
       context.font = '24px Inter, sans-serif';
       context.textAlign = 'center';
       context.fillText(`Score: ${Math.floor(gameState.score / 10)}`, canvas.width / 2, 30);
+      context.fillText(`High Score: ${gameState.highScore}`, canvas.width / 2, 60);
+
+      // Draw power-up status
+      context.font = '16px Inter, sans-serif';
+      context.textAlign = 'right';
+      if (gameState.isShielded) {
+        context.fillStyle = 'blue';
+        context.fillText(`Shield: ${Math.ceil(gameState.shieldTimer / 60)}s`, canvas.width - 10, 30);
+      }
+      if (gameState.scoreMultiplier > 1) {
+        context.fillStyle = 'gold';
+        context.fillText(`Multiplier: ${Math.ceil(gameState.multiplierTimer / 60)}s`, canvas.width - 10, 50);
+      }
     };
 
     draw();
@@ -290,11 +431,18 @@ const App = () => {
         height: 40,
       },
       platforms: [],
+      enemies: [],
       score: 0,
+      highScore: gameState.highScore,
       isGameOver: false,
+      isShielded: false,
+      shieldTimer: 0,
+      scoreMultiplier: 1,
+      multiplierTimer: 0,
     });
     setIsGameStarted(true);
   };
+  
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
@@ -307,18 +455,13 @@ const App = () => {
           className="rounded-lg shadow-inner border-4 border-gray-300"
           style={{ backgroundColor: '#f0f8ff' }}
         />
-        {!isGameStarted && <StartMenu onStart={() => setIsGameStarted(true)} />}
+        {!isGameStarted && <StartMenu onStart={() => setIsGameStarted(true)} highScore={gameState.highScore} />}
         {gameState.isGameOver && (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gray-800 text-white p-6 rounded-lg shadow-xl text-center">
-            <h2 className="text-2xl font-bold mb-2">Game Over!</h2>
-            <p className="text-xl">Final Score: {Math.floor(gameState.score / 10)}</p>
-            <button
-              onClick={resetGame}
-              className="mt-4 px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-full transition duration-300 transform hover:scale-105"
-            >
-              Play Again
-            </button>
-          </div>
+          <GameOverMenu
+            finalScore={Math.floor(gameState.score / 10)}
+            highScore={gameState.highScore}
+            onRestart={resetGame}
+          />
         )}
       </div>
     </div>
