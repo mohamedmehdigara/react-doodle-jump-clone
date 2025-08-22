@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import PauseMenu from './components/PauseMenu';
+import GameOverMenu from './components/GameOverMenu';
+import Leaderboard from './components/Leaderboard';
+import StartMenu from './components/StartMenu';
 import styled from 'styled-components';
 
 // ===================================
@@ -93,69 +97,9 @@ const ScoreItem = styled.li`
   }
 `;
 
-// ===================================
-// START MENU COMPONENT
-// ===================================
-const StartMenu = ({ onStart, highScore }) => {
-  return (
-    <MenuContainer>
-      <Title>Doodle Jump</Title>
-      <InstructionText>
-        Use the left and right arrow keys or 'A' and 'D' to move.
-      </InstructionText>
-      <ScoreText>
-        High Score: {highScore}
-      </ScoreText>
-      <Button onClick={onStart}>
-        Start Game
-      </Button>
-    </MenuContainer>
-  );
-};
-
-// ===================================
-// GAME OVER MENU COMPONENT
-// ===================================
-const GameOverMenu = ({ finalScore, highScore, onRestart, onShowLeaderboard }) => {
-  return (
-    <DarkMenuContainer>
-      <DarkTitle>Game Over!</DarkTitle>
-      <ScoreText>Final Score: {finalScore}</ScoreText>
-      <ScoreText>High Score: {highScore}</ScoreText>
-      <BlueButton onClick={onRestart}>
-        Play Again
-      </BlueButton>
-      <BlueButton onClick={onShowLeaderboard} style={{ marginTop: '10px' }}>
-        Show Leaderboard
-      </BlueButton>
-    </DarkMenuContainer>
-  );
-};
-
-// ===================================
-// LEADERBOARD COMPONENT
-// ===================================
-const Leaderboard = ({ scores, onBack }) => {
-  return (
-    <MenuContainer>
-      <Title>Leaderboard</Title>
-      <ScoreList>
-        {scores.map((item, index) => (
-          <ScoreItem key={index}>
-            <span>{index + 1}. {item.name}</span>
-            <span>{item.score}</span>
-          </ScoreItem>
-        ))}
-      </ScoreList>
-      <Button onClick={onBack}>Back to Main Menu</Button>
-    </MenuContainer>
-  );
-};
-
-// ===================================
-// MAIN APP COMPONENT
-// ===================================
 const App = () => {
+// MAIN APP COMPONENT
+// ===================================const App = () => {
   // Use a ref to access the canvas element
   const canvasRef = useRef(null);
 
@@ -174,15 +118,16 @@ const App = () => {
     score: 0,         // Player's current score
     highScore: 0,     // Highest score achieved, loaded from local storage
     isGameOver: false,
-    isShielded: false, // New: Is the player currently shielded?
-    shieldTimer: 0,    // New: Countdown for the shield duration
-    scoreMultiplier: 1, // New: Score multiplier (1x by default)
-    multiplierTimer: 0, // New: Countdown for the multiplier duration
+    isShielded: false, // Is the player currently shielded?
+    shieldTimer: 0,    // Countdown for the shield duration
+    scoreMultiplier: 1, // Score multiplier (1x by default)
+    multiplierTimer: 0, // Countdown for the multiplier duration
   });
 
   // State to control which screen is visible
   const [isGameStarted, setIsGameStarted] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [isPaused, setIsPaused] = useState(false); // New: Pause state
 
   // Game settings
   const gravity = 0.5;
@@ -284,6 +229,9 @@ const App = () => {
 
     const handleKeyDown = (e) => {
       keys.current[e.key] = true;
+      if (e.key === 'p' || e.key === 'Escape') {
+        setIsPaused(prev => !prev);
+      }
     };
     const handleKeyUp = (e) => {
       keys.current[e.key] = false;
@@ -300,7 +248,8 @@ const App = () => {
 
   // Main game loop using requestAnimationFrame
   useEffect(() => {
-    if (!isGameStarted || gameState.isGameOver) return;
+    // Only run the loop if the game is started, not over, and not paused
+    if (!isGameStarted || gameState.isGameOver || isPaused) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -483,7 +432,7 @@ const App = () => {
     animationFrameId = requestAnimationFrame(gameLoop);
 
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isGameStarted, gameState.isGameOver]);
+  }, [isGameStarted, gameState.isGameOver, isPaused]); // Added isPaused to the dependency array
 
   // Use a separate useEffect for drawing on the canvas
   useEffect(() => {
@@ -604,7 +553,21 @@ const App = () => {
     });
     setIsGameStarted(true);
     setShowLeaderboard(false);
+    setIsPaused(false); // Reset pause state
   };
+
+  const quitGame = () => {
+    setIsGameStarted(false);
+    setIsPaused(false);
+    setShowLeaderboard(false);
+    setGameState(prev => ({
+        ...prev,
+        isGameOver: false,
+        score: 0,
+        player: { x: 200, y: 100, vx: 0, vy: 0, width: 40, height: 40 },
+    }));
+  
+  
   
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
@@ -635,9 +598,15 @@ const App = () => {
             onBack={() => setShowLeaderboard(false)}
           />
         )}
+        {isGameStarted && isPaused && (
+          <PauseMenu
+            onResume={() => setIsPaused(false)}
+            onQuit={quitGame}
+          />
+        )}
       </div>
     </div>
   );
 };
-
+}
 export default App;
