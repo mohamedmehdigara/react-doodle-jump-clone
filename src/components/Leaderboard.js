@@ -41,25 +41,70 @@ const ScoreItem = styled.li`
   }
 `;
 
-/**
- * Leaderboard component displays a list of top high scores.
- *
- * @param {object} props - The component props.
- * @param {Array<Object>} props.scores - An array of score objects { name, score }.
- */
-const Leaderboard = ({ scores }) => {
+const MenuContainer = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  z-index: 10;
+`;
+
+
+const Button = styled.button`
+  margin-top: 16px;
+  padding: 12px 32px;
+  background-color: #22c55e;
+  color: white;
+  font-weight: bold;
+  border-radius: 9999px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+
+  &:hover {
+    background-color: #16a34a;
+    transform: scale(1.05);
+  }
+`;
+
+const BlueButton = styled(Button)`
+  background-color: #3b82f6;
+  &:hover {
+    background-color: #2563eb;
+  }
+`;
+
+
+
+
+const Leaderboard = ({ scores, onBack, loading, currentUserId }) => {
+  // Sort scores from highest to lowest
+  const sortedScores = [...scores].sort((a, b) => b.score - a.score);
+
   return (
-    <LeaderboardContainer>
+    <MenuContainer>
       <Title>Leaderboard</Title>
-      <ScoreList>
-        {scores.map((item, index) => (
-          <ScoreItem key={index}>
-            <span>{index + 1}. {item.name}</span>
-            <span>{item.score}</span>
-          </ScoreItem>
-        ))}
-      </ScoreList>
-    </LeaderboardContainer>
+      {loading ? (
+        <p>Loading scores...</p>
+      ) : (
+        <ScoreList>
+          {sortedScores.map((item, index) => (
+            <ScoreItem key={item.id}>
+              <span>{index + 1}. {item.name}{item.userId === currentUserId && ' (You)'}</span>
+              <span>{item.score}</span>
+            </ScoreItem>
+          ))}
+        </ScoreList>
+      )}
+      <Button onClick={onBack}>Back to Main Menu</Button>
+    </MenuContainer>
   );
 };
 

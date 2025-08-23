@@ -5,6 +5,7 @@ import StartMenu from './components/StartMenu';
 import Leaderboard from './components/Leaderboard';
 import PauseMenu from './components/PauseMenu';
 import GameOverMenu from './components/GameOverMenu';
+import OptionsMenu from './components/OptionsMenu';
 
 // ===================================
 
@@ -128,27 +129,20 @@ const App = () => {
   const [isGameStarted, setIsGameStarted] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
   const [message, setMessage] = useState(null);
   
   // Firestore-related states
   const [leaderboardScores, setLeaderboardScores] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [db, setDb] = useState(null);
-  const [auth, setAuth] = useState(null);
-  const [userId, setUserId] = useState(null);
+  
   const [userName] = useState('DoodleJumper'); // Hardcoded since profile editing is removed
   const [highScore, setHighScore] = useState(0);
   const [finalScore, setFinalScore] = useState(0);
 
    
    
-  const handleSubmitScore = async (score) => {
-    if (!db || !userId) {
-      console.error("Firestore not initialized or user not authenticated.");
-      return;
-    }
-   
-  };
+  const isNewHighScore = finalScore > highScore;
 
   const quitGame = () => {
     setIsGameStarted(false);
@@ -157,44 +151,28 @@ const App = () => {
     setFinalScore(0);
   }
 
-  const isNewHighScore = finalScore > highScore;
+  // Handle showing the leaderboard and submitting the score if it's a new high score
 
-   const handleShowLeaderboard = () => {
-    const isNewHighScore = finalScore > highScore;
-    if (isNewHighScore) {
-      handleSubmitScore(finalScore);
-    }
-    setShowLeaderboard(true);
-  };
-
+  
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
       <div className="bg-white rounded-xl shadow-lg p-6 flex flex-col items-center relative" style={{ width: '400px', height: '600px' }}>
         <h1 className="text-3xl font-bold text-gray-800 mb-4">Doodle Jump</h1>
         <MessageBox message={message} />
-        {!isGameStarted && !showLeaderboard && (
+        {!isGameStarted && !showLeaderboard && !showOptions && (
           <StartMenu
             onStart={() => setIsGameStarted(true)}
             highScore={highScore}
-            onShowLeaderboard={() => setShowLeaderboard(true)}
+            onShowOptions={() => setShowOptions(true)}
             userName={userName}
           />
         )}
-        {isGameStarted && !isPaused && (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center text-gray-400">
-            <p>Game is running...</p>
-            <p>Press 'P' or 'Escape' to pause.</p>
-            <button className="text-blue-500" onClick={() => setIsPaused(true)}>Simulate Pause</button>
-            <button className="text-red-500 ml-2" onClick={() => { setFinalScore(1234); setIsGameStarted(false); }}>Simulate Game Over</button>
-            <button className="text-red-500 ml-2" onClick={() => setMessage("This is a test message!")}>Show Message</button>
-          </div>
-        )}
+       
         {showLeaderboard && (
           <Leaderboard
             scores={leaderboardScores}
             onBack={quitGame}
             loading={loading}
-            currentUserId={userId}
           />
         )}
         {isGameStarted && isPaused && (
@@ -203,17 +181,16 @@ const App = () => {
             onQuit={quitGame}
           />
         )}
-        {finalScore > 0 && !showLeaderboard && (
+        {showOptions && (
+          <OptionsMenu
+            onBack={() => setShowOptions(false)}
+          />
+        )}
+        {finalScore > 0 && !showLeaderboard && !showOptions && (
           <GameOverMenu
             finalScore={finalScore}
             highScore={highScore}
             onRestart={() => { setFinalScore(0); setIsGameStarted(true) }}
-            onShowLeaderboard={() => {
-              if (isNewHighScore) {
-                handleSubmitScore(finalScore);
-              }
-              setShowLeaderboard(true);
-            }}
           />
         )}
       </div>
@@ -222,3 +199,8 @@ const App = () => {
 };
 
 export default App;
+
+
+
+
+  

@@ -15,16 +15,6 @@ const MenuContainer = styled.div`
   text-align: center;
 `;
 
-const Title = styled.h2`
-  font-size: 1.875rem;
-  font-weight: bold;
-  margin-bottom: 8px;
-`;
-
-const ScoreText = styled.p`
-  font-size: 1.5rem;
-  margin-top: 16px;
-`;
 
 const HighScoreText = styled.p`
   font-size: 1.25rem;
@@ -48,25 +38,73 @@ const RestartButton = styled.button`
   }
 `;
 
-/**
- * GameOverMenu component displays the game over screen with the final score, high score,
- * and a button to restart the game.
- *
- * @param {object} props - The component props.
- * @param {number} props.finalScore - The player's final score for the current game.
- * @param {number} props.highScore - The recorded high score.
- * @param {Function} props.onRestart - Callback function to reset and start a new game.
- */
-const GameOverMenu = ({ finalScore, highScore, onRestart }) => {
+const DarkMenuContainer = styled(MenuContainer)`
+  background-color: #1f2937;
+  color: white;
+`;
+
+const Title = styled.h2`
+  font-size: 2.25rem;
+  font-weight: 800;
+  color: #1f2937;
+  margin-bottom: 8px;
+`;
+
+const DarkTitle = styled.h2`
+  font-size: 1.875rem;
+  font-weight: bold;
+  margin-bottom: 8px;
+`;
+
+const InstructionText = styled.p`
+  color: #4b5563;
+  margin-bottom: 8px;
+`;
+
+const ScoreText = styled.p`
+  color: #4b5563;
+  margin-bottom: 24px;
+  font-weight: 600;
+`;
+
+const Button = styled.button`
+  margin-top: 16px;
+  padding: 12px 32px;
+  background-color: #22c55e;
+  color: white;
+  font-weight: bold;
+  border-radius: 9999px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+
+  &:hover {
+    background-color: #16a34a;
+    transform: scale(1.05);
+  }
+`;
+
+const BlueButton = styled(Button)`
+  background-color: #3b82f6;
+  &:hover {
+    background-color: #2563eb;
+  }
+`;
+
+
+
+const GameOverMenu = ({ finalScore, highScore, onRestart, onShowLeaderboard }) => {
   return (
-    <MenuContainer>
-      <Title>Game Over!</Title>
+    <DarkMenuContainer>
+      <DarkTitle>Game Over!</DarkTitle>
       <ScoreText>Final Score: {finalScore}</ScoreText>
-      <HighScoreText>High Score: {highScore}</HighScoreText>
-      <RestartButton onClick={onRestart}>
+      <ScoreText>High Score: {highScore}</ScoreText>
+      <BlueButton onClick={onRestart}>
         Play Again
-      </RestartButton>
-    </MenuContainer>
+      </BlueButton>
+      <BlueButton onClick={onShowLeaderboard} style={{ marginTop: '10px' }}>
+        Show Leaderboard
+      </BlueButton>
+    </DarkMenuContainer>
   );
 };
 
