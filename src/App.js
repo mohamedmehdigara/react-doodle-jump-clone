@@ -6,6 +6,7 @@ import Leaderboard from './components/Leaderboard';
 import PauseMenu from './components/PauseMenu';
 import GameOverMenu from './components/GameOverMenu';
 import OptionsMenu from './components/OptionsMenu';
+import HelpModal from './components/HelpModal';
 
 // ===================================
 
@@ -130,44 +131,45 @@ const App = () => {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [message, setMessage] = useState(null);
   
   // Firestore-related states
   const [leaderboardScores, setLeaderboardScores] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [userName] = useState('DoodleJumper'); // Hardcoded since profile editing is removed
   const [highScore, setHighScore] = useState(0);
   const [finalScore, setFinalScore] = useState(0);
 
-   
-   
-  const isNewHighScore = finalScore > highScore;
-
+  
   const quitGame = () => {
     setIsGameStarted(false);
     setIsPaused(false);
     setShowLeaderboard(false);
+    setShowOptions(false);
+    setShowHelp(false);
     setFinalScore(0);
   }
 
   // Handle showing the leaderboard and submitting the score if it's a new high score
-
+  
   
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
       <div className="bg-white rounded-xl shadow-lg p-6 flex flex-col items-center relative" style={{ width: '400px', height: '600px' }}>
         <h1 className="text-3xl font-bold text-gray-800 mb-4">Doodle Jump</h1>
         <MessageBox message={message} />
-        {!isGameStarted && !showLeaderboard && !showOptions && (
+        {!isGameStarted && !showLeaderboard && !showOptions && !showHelp && (
           <StartMenu
             onStart={() => setIsGameStarted(true)}
             highScore={highScore}
             onShowOptions={() => setShowOptions(true)}
+            onShowHelp={() => setShowHelp(true)}
             userName={userName}
           />
         )}
-       
+        
         {showLeaderboard && (
           <Leaderboard
             scores={leaderboardScores}
@@ -183,10 +185,15 @@ const App = () => {
         )}
         {showOptions && (
           <OptionsMenu
-            onBack={() => setShowOptions(false)}
+            onBack={quitGame}
           />
         )}
-        {finalScore > 0 && !showLeaderboard && !showOptions && (
+        {showHelp && (
+          <HelpModal
+            onBack={quitGame}
+          />
+        )}
+        {finalScore > 0 && !showLeaderboard && !showOptions && !showHelp && (
           <GameOverMenu
             finalScore={finalScore}
             highScore={highScore}
@@ -199,8 +206,3 @@ const App = () => {
 };
 
 export default App;
-
-
-
-
-  
