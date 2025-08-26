@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
-import MessageBox from './components/MessageBox';
-import StartMenu from './components/StartMenu';
-import Leaderboard from './components/Leaderboard';
-import PauseMenu from './components/PauseMenu';
-import GameOverMenu from './components/GameOverMenu';
-import OptionsMenu from './components/OptionsMenu';
 import HelpModal from './components/HelpModal';
+import GameOverMenu from './components/GameOverMenu';
+import PauseMenu from './components/PauseMenu';
+import OptionsMenu from './components/OptionsMenu';
+import Leaderboard from './components/Leaderboard';
+import StartMenu from './components/StartMenu';
+import MessageBox from './components/MessageBox';
 
+// ===================================
+// FIREBASE IMPORTS AND CONFIG
 // ===================================
 
 // --- STYLED COMPONENTS ---
@@ -126,6 +128,13 @@ const MessageBoxContainer = styled.div`
   z-index: 20;
 `;
 
+// ===================================
+// IN-GAME MESSAGE BOX COMPONENT
+// ===================================
+
+// ===================================
+// MAIN APP COMPONENT
+// ===================================
 const App = () => {
   const [isGameStarted, setIsGameStarted] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -140,12 +149,19 @@ const App = () => {
   // Firestore-related states
   const [leaderboardScores, setLeaderboardScores] = useState([]);
   const [loading, setLoading] = useState(true);
-
+  
   const [highScore, setHighScore] = useState(0);
   const [finalScore, setFinalScore] = useState(0);
 
   // --- Firebase and Firestore Setup ---
+
+
   
+      
+     
+
+    
+
   // --- Game Loop and Drawing Logic ---
   useEffect(() => {
     if (!isGameStarted || isPaused) {
@@ -160,11 +176,26 @@ const App = () => {
     const ctx = canvas.getContext('2d');
     let animationFrameId;
 
+    // Player properties
+    const player = {
+      x: canvas.width / 2,
+      y: canvas.height - 100,
+      width: 40,
+      height: 40,
+      color: 'blue' // Placeholder color
+    };
+
+    const drawPlayer = () => {
+      ctx.fillStyle = player.color;
+      ctx.fillRect(player.x - player.width / 2, player.y - player.height / 2, player.width, player.height);
+    };
+
     const animate = () => {
       // Clear the canvas on each frame
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // TODO: Draw game elements here (doodle, platforms, etc.)
+      // Draw game elements
+      drawPlayer();
       
       // Request the next frame
       animationFrameId = requestAnimationFrame(animate);
@@ -179,7 +210,7 @@ const App = () => {
 
   }, [isGameStarted, isPaused]);
 
-
+  
 
   const quitGame = () => {
     setIsGameStarted(false);
@@ -191,7 +222,12 @@ const App = () => {
   }
 
   // Handle showing the leaderboard and submitting the score if it's a new high score
-  
+  const handleShowLeaderboard = () => {
+    const isNewHighScore = finalScore > highScore;
+    if (isNewHighScore) {
+    }
+    setShowLeaderboard(true);
+  };
   
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
@@ -202,6 +238,7 @@ const App = () => {
           <StartMenu
             onStart={() => setIsGameStarted(true)}
             highScore={highScore}
+            onShowLeaderboard={handleShowLeaderboard}
             onShowOptions={() => setShowOptions(true)}
             onShowHelp={() => setShowHelp(true)}
           />
@@ -241,6 +278,7 @@ const App = () => {
             finalScore={finalScore}
             highScore={highScore}
             onRestart={() => { setFinalScore(0); setIsGameStarted(true) }}
+            onShowLeaderboard={handleShowLeaderboard}
           />
         )}
       </div>
