@@ -127,7 +127,6 @@ const MessageBoxContainer = styled.div`
   animation: ${props => props.isFadingOut ? fadeOut : fadeIn} 0.5s forwards;
   z-index: 20;
 `;
-
 // ===================================
 // IN-GAME MESSAGE BOX COMPONENT
 // ===================================
@@ -149,19 +148,10 @@ const App = () => {
   // Firestore-related states
   const [leaderboardScores, setLeaderboardScores] = useState([]);
   const [loading, setLoading] = useState(true);
-  
   const [highScore, setHighScore] = useState(0);
   const [finalScore, setFinalScore] = useState(0);
 
   // --- Firebase and Firestore Setup ---
-
-
-  
-      
-     
-
-    
-
   // --- Game Loop and Drawing Logic ---
   useEffect(() => {
     if (!isGameStarted || isPaused) {
@@ -176,41 +166,101 @@ const App = () => {
     const ctx = canvas.getContext('2d');
     let animationFrameId;
 
-    // Player properties
-    const player = {
+    // Game variables
+    const gravity = 0.3;
+    let player = {
       x: canvas.width / 2,
       y: canvas.height - 100,
       width: 40,
       height: 40,
-      color: 'blue' // Placeholder color
+      velocityY: 0,
+    };
+    let platforms = [];
+    const platformCount = 10;
+    const platformWidth = 70;
+    const platformHeight = 10;
+
+    // Function to create platforms
+    const createPlatforms = () => {
+      platforms = [];
+      platforms.push({
+        x: canvas.width / 2 - platformWidth / 2,
+        y: canvas.height - 50,
+        width: platformWidth,
+        height: platformHeight,
+        color: 'green'
+      });
+      for (let i = 1; i < platformCount; i++) {
+        platforms.push({
+          x: Math.random() * (canvas.width - platformWidth),
+          y: (canvas.height / platformCount) * i,
+          width: platformWidth,
+          height: platformHeight,
+          color: 'green'
+        });
+      }
     };
 
+    // Function to draw all platforms
+    const drawPlatforms = () => {
+      platforms.forEach(platform => {
+        ctx.fillStyle = platform.color;
+        ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+      });
+    };
+
+    // Function to draw player
     const drawPlayer = () => {
-      ctx.fillStyle = player.color;
-      ctx.fillRect(player.x - player.width / 2, player.y - player.height / 2, player.width, player.height);
+      ctx.fillStyle = 'blue';
+      ctx.fillRect(player.x, player.y, player.width, player.height);
     };
 
+    // Function for collision detection
+    const checkCollision = (platform) => {
+      // Bounding box collision check
+      return (
+        player.y + player.height >= platform.y &&
+        player.y + player.height <= platform.y + platform.height &&
+        player.x + player.width >= platform.x &&
+        player.x <= platform.x + platform.width &&
+        player.velocityY > 0
+      );
+    };
+    
+    // Main game loop
     const animate = () => {
-      // Clear the canvas on each frame
+      // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw game elements
-      drawPlayer();
+      // Update player position (gravity)
+      player.velocityY += gravity;
+      player.y += player.velocityY;
+
+      // Check for platform collisions
+      platforms.forEach(platform => {
+        if (checkCollision(platform)) {
+          // If collision, make player jump
+          player.velocityY = -10;
+        }
+      });
       
-      // Request the next frame
+      // Draw all elements
+      drawPlatforms();
+      drawPlayer();
+
       animationFrameId = requestAnimationFrame(animate);
     };
-
+    
+    // Initial setup
+    createPlatforms();
     animate();
 
-    // Cleanup function to cancel the animation frame when the component unmounts or state changes
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
 
   }, [isGameStarted, isPaused]);
 
-  
 
   const quitGame = () => {
     setIsGameStarted(false);
@@ -221,13 +271,7 @@ const App = () => {
     setFinalScore(0);
   }
 
-  // Handle showing the leaderboard and submitting the score if it's a new high score
-  const handleShowLeaderboard = () => {
-    const isNewHighScore = finalScore > highScore;
-    if (isNewHighScore) {
-    }
-    setShowLeaderboard(true);
-  };
+
   
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
@@ -238,7 +282,6 @@ const App = () => {
           <StartMenu
             onStart={() => setIsGameStarted(true)}
             highScore={highScore}
-            onShowLeaderboard={handleShowLeaderboard}
             onShowOptions={() => setShowOptions(true)}
             onShowHelp={() => setShowHelp(true)}
           />
@@ -278,7 +321,6 @@ const App = () => {
             finalScore={finalScore}
             highScore={highScore}
             onRestart={() => { setFinalScore(0); setIsGameStarted(true) }}
-            onShowLeaderboard={handleShowLeaderboard}
           />
         )}
       </div>

@@ -114,7 +114,7 @@ const StartButton = styled.button`
  * @param {Function} props.onStart - Callback function to start the game.
  * @param {number} props.highScore - The current high score to display.
  */
-const StartMenu = ({ onStart, highScore, onShowLeaderboard, onShowOptions, userName }) => {
+const StartMenu = ({ onStart, highScore, onShowLeaderboard, onShowOptions, onShowHelp, userName }) => {
   return (
     <MenuContainer>
       <Title>Doodle Jump</Title>
@@ -135,6 +135,9 @@ const StartMenu = ({ onStart, highScore, onShowLeaderboard, onShowOptions, userN
       </BlueButton>
       <BlueButton onClick={onShowOptions}>
         Options
+      </BlueButton>
+      <BlueButton onClick={onShowHelp}>
+        Help
       </BlueButton>
     </MenuContainer>
   );
