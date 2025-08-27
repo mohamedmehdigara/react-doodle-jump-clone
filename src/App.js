@@ -209,10 +209,6 @@ const App = () => {
   // Firestore-related states
   const [leaderboardScores, setLeaderboardScores] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [db, setDb] = useState(null);
-  const [auth, setAuth] = useState(null);
-  const [userId, setUserId] = useState(null);
-  const [userName] = useState('DoodleJumper'); // Hardcoded since profile editing is removed
   const [highScore, setHighScore] = useState(0);
   const [finalScore, setFinalScore] = useState(0);
 
@@ -238,6 +234,8 @@ const App = () => {
     const normalJumpVelocity = -10;
     const springJumpVelocity = -20;
     const superJumpVelocity = -30;
+    const jetpackVelocity = -8;
+    const jetpackDuration = 3000;
     const shieldDuration = 5000; // 5 seconds
     const bouncingProjectileDuration = 10000; // 10 seconds
     const BOSS_SCORE_THRESHOLD = 2000;
@@ -259,6 +257,8 @@ const App = () => {
       shieldEndTime: 0,
       hasBouncingProjectiles: false,
       bouncingProjectileEndTime: 0,
+      hasJetpack: false,
+      jetpackEndTime: 0,
     };
     let platforms = [];
     let enemies = [];
@@ -266,9 +266,17 @@ const App = () => {
     let springs = [];
     let shields = [];
     let bouncingProjectileItems = [];
+    let jetpackItems = [];
     let boss = null;
     let bossProjectiles = [];
     let lastBossFireTime = 0;
+    
+    // Background variables
+    let background = {
+      color: '#f0f8ff',
+      scrollY: 0,
+      theme: 'grass',
+    };
 
     const initialPlatformCount = 10;
     const platformWidth = 70;
@@ -377,13 +385,25 @@ const App = () => {
         color: 'cyan', // Blue lightning bolt
       });
     };
+
+    // Function to create a new jetpack power-up
+    const createNewJetpackItem = () => {
+      jetpackItems.push({
+        x: Math.random() * (canvas.width - 20),
+        y: -20,
+        width: 20,
+        height: 20,
+        color: 'gray',
+      });
+    };
     
-    // Function to initialize platforms, with a chance to spawn springs on them
+    // Function to initialize platforms, with a chance to spawn items
     const createInitialPlatforms = () => {
         platforms = [];
         springs = [];
         shields = [];
         bouncingProjectileItems = [];
+        jetpackItems = [];
         platforms.push({
             x: canvas.width / 2 - platformWidth / 2,
             y: canvas.height - 50,
@@ -500,6 +520,24 @@ const App = () => {
       });
     };
 
+    // Function to draw jetpack power-up
+    const drawJetpackItems = () => {
+      jetpackItems.forEach(item => {
+        ctx.fillStyle = item.color;
+        // Draw a simple jetpack shape (rect)
+        ctx.fillRect(item.x, item.y, item.width, item.height);
+        // Draw a flame effect
+        const flameHeight = Math.random() * 10 + 10;
+        ctx.fillStyle = 'orange';
+        ctx.beginPath();
+        ctx.moveTo(item.x + item.width * 0.25, item.y + item.height);
+        ctx.lineTo(item.x + item.width * 0.75, item.y + item.height);
+        ctx.lineTo(item.x + item.width / 2, item.y + item.height + flameHeight);
+        ctx.closePath();
+        ctx.fill();
+      });
+    };
+
     // Function to draw player
     const drawPlayer = () => {
       if (player.hasShield) {
@@ -510,6 +548,19 @@ const App = () => {
       }
       ctx.fillStyle = 'blue';
       ctx.fillRect(player.x, player.y, player.width, player.height);
+      if (player.hasJetpack) {
+        ctx.fillStyle = 'gray';
+        ctx.fillRect(player.x + 5, player.y + player.height - 10, player.width - 10, 10);
+        // Draw fire effect
+        const flameHeight = Math.random() * 15 + 10;
+        ctx.fillStyle = 'orange';
+        ctx.beginPath();
+        ctx.moveTo(player.x + player.width * 0.25, player.y + player.height);
+        ctx.lineTo(player.x + player.width * 0.75, player.y + player.height);
+        ctx.lineTo(player.x + player.width / 2, player.y + player.height + flameHeight);
+        ctx.closePath();
+        ctx.fill();
+      }
     };
 
     // Function to draw the boss and its health bar
@@ -558,10 +609,56 @@ const App = () => {
       const dy = distY - rect.height / 2;
       return (dx * dx + dy * dy <= (circle.radius * circle.radius));
     };
+    
+    // Function to change the background theme based on score
+    const changeBackground = () => {
+      const currentScore = Math.floor(score);
+      if (currentScore > 500 && background.theme === 'grass') {
+        background.theme = 'sky';
+        setMessage("Entering the atmosphere...");
+      }
+      if (currentScore > 1000 && background.theme === 'sky') {
+        background.theme = 'space';
+        setMessage("You're in outer space!");
+      }
+    };
+    
+    // Function to draw the scrolling background
+    const drawBackground = () => {
+      let gradient;
+      if (background.theme === 'grass') {
+        gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
+        gradient.addColorStop(0, '#f0f8ff'); // Light blue sky
+        gradient.addColorStop(0.5, '#add8e6'); // Sky blue
+        gradient.addColorStop(1, '#90ee90'); // Light green ground
+      } else if (background.theme === 'sky') {
+        gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
+        gradient.addColorStop(0, '#87ceeb'); // Sky blue
+        gradient.addColorStop(1, '#4682b4'); // Steel blue
+      } else if (background.theme === 'space') {
+        gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
+        gradient.addColorStop(0, '#191970'); // Midnight blue
+        gradient.addColorStop(1, '#000000'); // Black
+      }
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw stars for the space theme
+      if (background.theme === 'space') {
+        for (let i = 0; i < 50; i++) {
+          ctx.fillStyle = 'white';
+          ctx.beginPath();
+          ctx.arc(Math.random() * canvas.width, Math.random() * canvas.height, 1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    };
 
     // Function to draw score
     const drawScore = () => {
-      ctx.fillStyle = 'black';
+      // Adjust text color based on background theme for better contrast
+      const textColor = background.theme === 'space' ? 'white' : 'black';
+      ctx.fillStyle = textColor;
       ctx.font = '24px Arial';
       ctx.fillText(`Score: ${Math.floor(score)}`, 10, 30);
     };
@@ -570,16 +667,22 @@ const App = () => {
     const animate = () => {
       // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw the background before everything else
+      drawBackground();
 
-      // Check and disable shield if duration has passed
+      // Check and disable power-ups if duration has passed
       if (player.hasShield && Date.now() > player.shieldEndTime) {
         player.hasShield = false;
         setMessage("Shield deactivated!");
       }
-      // Check and disable bouncing projectiles if duration has passed
       if (player.hasBouncingProjectiles && Date.now() > player.bouncingProjectileEndTime) {
         player.hasBouncingProjectiles = false;
         setMessage("Bouncing projectiles deactivated!");
+      }
+      if (player.hasJetpack && Date.now() > player.jetpackEndTime) {
+        player.hasJetpack = false;
+        setMessage("Jetpack ran out of fuel!");
       }
 
       // Handle key presses
@@ -589,7 +692,7 @@ const App = () => {
       if (keys['ArrowRight'] || keys['d']) {
         player.x += playerSpeed;
       }
-      if (keys[' ']) { // Spacebar for shooting
+      if (keys[' '] && !player.hasJetpack) { // Spacebar for shooting, not when using jetpack
         createProjectile();
         keys[' '] = false; // Prevent continuous shooting
       }
@@ -664,41 +767,49 @@ const App = () => {
       });
       
       // If player is moving up and reaches top of screen, scroll elements down
-      if (player.velocityY < 0 && player.y < canvas.height / 2) {
+      if (player.velocityY < 0 && player.y < canvas.height / 2 || player.hasJetpack) {
+          const scrollSpeed = player.hasJetpack ? jetpackVelocity : -player.velocityY;
           platforms.forEach(platform => {
-              platform.y -= player.velocityY;
+              platform.y += scrollSpeed;
           });
           enemies.forEach(enemy => {
-            enemy.y -= player.velocityY;
+            enemy.y += scrollSpeed;
           });
           projectiles.forEach(projectile => {
-            projectile.y -= player.velocityY;
+            projectile.y += scrollSpeed;
           });
           bossProjectiles.forEach(proj => {
-            proj.y -= player.velocityY;
+            proj.y += scrollSpeed;
           });
           springs.forEach(spring => {
-            spring.y -= player.velocityY;
+            spring.y += scrollSpeed;
           });
           shields.forEach(shield => {
-            shield.y -= player.velocityY;
+            shield.y += scrollSpeed;
           });
           bouncingProjectileItems.forEach(item => {
-            item.y -= player.velocityY;
+            item.y += scrollSpeed;
+          });
+          jetpackItems.forEach(item => {
+            item.y += scrollSpeed;
           });
           if (boss) {
-            boss.y -= player.velocityY;
+            boss.y += scrollSpeed;
           }
-          score += -player.velocityY * 0.1;
+          score += scrollSpeed * 0.1;
       }
 
-      // Update vertical position (gravity)
-      player.velocityY += gravity;
+      // Update vertical position (gravity or jetpack)
+      if (!player.hasJetpack) {
+        player.velocityY += gravity;
+      } else {
+        player.velocityY = jetpackVelocity;
+      }
       player.y += player.velocityY;
 
       // Check for platform collisions
       for (let i = 0; i < platforms.length; i++) {
-        if (checkCollision(player, platforms[i]) && player.velocityY > 0) {
+        if (checkCollision(player, platforms[i]) && player.velocityY > 0 && !player.hasJetpack) {
           // If collision, make player jump based on platform type
           if (platforms[i].type === 'green' || platforms[i].type === 'moving') {
             player.velocityY = normalJumpVelocity;
@@ -716,7 +827,7 @@ const App = () => {
 
       // Check for spring collisions
       for (let i = springs.length - 1; i >= 0; i--) {
-        if (checkCollision(player, springs[i])) {
+        if (checkCollision(player, springs[i]) && !player.hasJetpack) {
           player.velocityY = superJumpVelocity;
           springs.splice(i, 1); // Remove the spring
         }
@@ -742,12 +853,22 @@ const App = () => {
         }
       }
 
+      // Check for jetpack item collisions
+      for (let i = jetpackItems.length - 1; i >= 0; i--) {
+        if (checkCollision(player, jetpackItems[i])) {
+          player.hasJetpack = true;
+          player.jetpackEndTime = Date.now() + jetpackDuration;
+          setMessage("Jetpack activated!");
+          jetpackItems.splice(i, 1);
+        }
+      }
+
       // Check for enemy collisions
       for (let i = 0; i < enemies.length; i++) {
         if (checkCollision(player, enemies[i])) {
-          if (player.hasShield) {
+          if (player.hasShield || player.hasJetpack) {
             enemies.splice(i, 1); // Destroy enemy, but player is safe
-            setMessage("Enemy destroyed by shield!");
+            setMessage("Enemy destroyed!");
           } else {
             setFinalScore(Math.floor(score));
             setScore(0);
@@ -792,9 +913,9 @@ const App = () => {
         // Check for boss projectile-player collisions
         for (let i = bossProjectiles.length - 1; i >= 0; i--) {
           if (checkCircleRectCollision(bossProjectiles[i], player)) {
-            if (player.hasShield) {
+            if (player.hasShield || player.hasJetpack) {
               bossProjectiles.splice(i, 1);
-              setMessage("Shield absorbed boss projectile!");
+              setMessage("Power-up absorbed boss projectile!");
             } else {
               setFinalScore(Math.floor(score));
               setScore(0);
@@ -812,6 +933,7 @@ const App = () => {
       springs = springs.filter(spring => spring.y < canvas.height);
       shields = shields.filter(shield => shield.y < canvas.height);
       bouncingProjectileItems = bouncingProjectileItems.filter(item => item.y < canvas.height);
+      jetpackItems = jetpackItems.filter(item => item.y < canvas.height);
       bossProjectiles = bossProjectiles.filter(proj => proj.y < canvas.height && proj.x > 0 && proj.x < canvas.width);
 
       while (platforms.length < initialPlatformCount) {
@@ -829,6 +951,10 @@ const App = () => {
       if (Math.random() < 0.0005) { // Very small chance to spawn a bouncing projectile item
         createNewBouncingProjectileItem();
       }
+      
+      if (Math.random() < 0.0005) { // Very small chance to spawn a jetpack
+        createNewJetpackItem();
+      }
 
       // Check for game over
       if (player.y > canvas.height) {
@@ -838,6 +964,7 @@ const App = () => {
       }
       
       setScore(score); // Update state for UI
+      changeBackground();
       
       // Draw all elements
       drawPlatforms();
@@ -847,6 +974,7 @@ const App = () => {
       drawSprings();
       drawShields();
       drawBouncingProjectileItems();
+      drawJetpackItems();
       drawPlayer();
       drawBoss();
       drawScore();
@@ -866,7 +994,7 @@ const App = () => {
 
   }, [isGameStarted, isPaused, setScore, setFinalScore, setIsGameStarted]);
 
-  
+
   const quitGame = () => {
     setIsGameStarted(false);
     setIsPaused(false);
@@ -878,7 +1006,6 @@ const App = () => {
 
   const handleShowLeaderboard = () => {
     const isNewHighScore = finalScore > highScore;
-    
     setShowLeaderboard(true);
   };
   
@@ -898,7 +1025,6 @@ const App = () => {
             onShowLeaderboard={handleShowLeaderboard}
             onShowOptions={() => setShowOptions(true)}
             onShowHelp={() => setShowHelp(true)}
-            userName={userName}
           />
         )}
         {isGameStarted && !isPaused && (
@@ -913,7 +1039,6 @@ const App = () => {
             scores={leaderboardScores}
             onBack={quitGame}
             loading={loading}
-            currentUserId={userId}
           />
         )}
         {isGameStarted && isPaused && (
