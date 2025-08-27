@@ -5,13 +5,12 @@ import GameOverMenu from './components/GameOverMenu';
 import PauseMenu from './components/PauseMenu';
 import OptionsMenu from './components/OptionsMenu';
 import Leaderboard from './components/Leaderboard';
-import StartMenu from './components/StartMenu';
 import MessageBox from './components/MessageBox';
+import StartMenu from './components/StartMenu';
 
 // ===================================
 // FIREBASE IMPORTS AND CONFIG
 // ===================================
-
 // --- STYLED COMPONENTS ---
 
 const MenuContainer = styled.div`
@@ -127,8 +126,33 @@ const MessageBoxContainer = styled.div`
   animation: ${props => props.isFadingOut ? fadeOut : fadeIn} 0.5s forwards;
   z-index: 20;
 `;
+
 // ===================================
 // IN-GAME MESSAGE BOX COMPONENT
+// ===================================
+
+// ===================================
+// START MENU COMPONENT
+// ===================================
+
+// ===================================
+// GAME OVER MENU COMPONENT
+// ===================================
+
+// ===================================
+// LEADERBOARD COMPONENT
+// ===================================
+
+// ===================================
+// PAUSE MENU COMPONENT
+// ===================================
+
+// ===================================
+// OPTIONS MENU COMPONENT
+// ===================================
+
+// ===================================
+// HELP MODAL COMPONENT
 // ===================================
 
 // ===================================
@@ -144,6 +168,7 @@ const App = () => {
   
   // Game state
   const canvasRef = useRef(null);
+  const [score, setScore] = useState(0);
 
   // Firestore-related states
   const [leaderboardScores, setLeaderboardScores] = useState([]);
@@ -152,6 +177,11 @@ const App = () => {
   const [finalScore, setFinalScore] = useState(0);
 
   // --- Firebase and Firestore Setup ---
+
+
+      
+
+
   // --- Game Loop and Drawing Logic ---
   useEffect(() => {
     if (!isGameStarted || isPaused) {
@@ -174,31 +204,58 @@ const App = () => {
       width: 40,
       height: 40,
       velocityY: 0,
+      velocityX: 0,
     };
     let platforms = [];
-    const platformCount = 10;
+    const initialPlatformCount = 10;
     const platformWidth = 70;
     const platformHeight = 10;
+    const playerSpeed = 5;
+    let score = 0;
+    let maxScore = 0;
 
-    // Function to create platforms
-    const createPlatforms = () => {
-      platforms = [];
-      platforms.push({
-        x: canvas.width / 2 - platformWidth / 2,
-        y: canvas.height - 50,
-        width: platformWidth,
-        height: platformHeight,
-        color: 'green'
-      });
-      for (let i = 1; i < platformCount; i++) {
+    // Keyboard state
+    let keys = {};
+    const handleKeyDown = (e) => {
+      keys[e.key] = true;
+    };
+    const handleKeyUp = (e) => {
+      keys[e.key] = false;
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
+
+    // Function to create a new platform at the top
+    const createNewPlatform = () => {
         platforms.push({
-          x: Math.random() * (canvas.width - platformWidth),
-          y: (canvas.height / platformCount) * i,
-          width: platformWidth,
-          height: platformHeight,
-          color: 'green'
+            x: Math.random() * (canvas.width - platformWidth),
+            y: -platformHeight, // Start just above the canvas
+            width: platformWidth,
+            height: platformHeight,
+            color: 'green'
         });
-      }
+    };
+
+    // Function to initialize platforms
+    const createInitialPlatforms = () => {
+        platforms = [];
+        platforms.push({
+            x: canvas.width / 2 - platformWidth / 2,
+            y: canvas.height - 50,
+            width: platformWidth,
+            height: platformHeight,
+            color: 'green'
+        });
+        for (let i = 1; i < initialPlatformCount; i++) {
+            platforms.push({
+                x: Math.random() * (canvas.width - platformWidth),
+                y: (canvas.height / initialPlatformCount) * i,
+                width: platformWidth,
+                height: platformHeight,
+                color: 'green'
+            });
+        }
     };
 
     // Function to draw all platforms
@@ -217,7 +274,6 @@ const App = () => {
 
     // Function for collision detection
     const checkCollision = (platform) => {
-      // Bounding box collision check
       return (
         player.y + player.height >= platform.y &&
         player.y + player.height <= platform.y + platform.height &&
@@ -226,13 +282,43 @@ const App = () => {
         player.velocityY > 0
       );
     };
+
+    // Function to draw score
+    const drawScore = () => {
+      ctx.fillStyle = 'black';
+      ctx.font = '24px Arial';
+      ctx.fillText(`Score: ${Math.floor(score)}`, 10, 30);
+    };
     
     // Main game loop
     const animate = () => {
       // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Update player position (gravity)
+      // Update horizontal velocity based on key presses
+      if (keys['ArrowLeft'] || keys['a']) {
+        player.x -= playerSpeed;
+      }
+      if (keys['ArrowRight'] || keys['d']) {
+        player.x += playerSpeed;
+      }
+      
+      // Wrap player around the screen
+      if (player.x + player.width < 0) {
+        player.x = canvas.width;
+      } else if (player.x > canvas.width) {
+        player.x = -player.width;
+      }
+
+      // If player is moving up and reaches top of screen, scroll platforms down
+      if (player.velocityY < 0 && player.y < canvas.height / 2) {
+          platforms.forEach(platform => {
+              platform.y -= player.velocityY;
+          });
+          score += -player.velocityY * 0.1;
+      }
+
+      // Update vertical position (gravity)
       player.velocityY += gravity;
       player.y += player.velocityY;
 
@@ -244,22 +330,40 @@ const App = () => {
         }
       });
       
+      // Remove platforms that are off-screen and add new ones
+      platforms = platforms.filter(platform => platform.y < canvas.height);
+      while (platforms.length < initialPlatformCount) {
+          createNewPlatform();
+      }
+
+      // Check for game over
+      if (player.y > canvas.height) {
+        setFinalScore(Math.floor(score));
+        setScore(0);
+        setIsGameStarted(false);
+      }
+      
+      setScore(score); // Update state for UI
+      
       // Draw all elements
       drawPlatforms();
       drawPlayer();
+      drawScore();
 
       animationFrameId = requestAnimationFrame(animate);
     };
     
     // Initial setup
-    createPlatforms();
+    createInitialPlatforms();
     animate();
 
     return () => {
       cancelAnimationFrame(animationFrameId);
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keyup', handleKeyUp);
     };
 
-  }, [isGameStarted, isPaused]);
+  }, [isGameStarted, isPaused, setScore, setFinalScore, setIsGameStarted]);
 
 
   const quitGame = () => {
@@ -271,7 +375,10 @@ const App = () => {
     setFinalScore(0);
   }
 
-
+  const handleShowLeaderboard = () => {
+    const isNewHighScore = finalScore > highScore;
+     setShowLeaderboard(true);
+  };
   
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
@@ -280,8 +387,12 @@ const App = () => {
         <MessageBox message={message} />
         {!isGameStarted && !showLeaderboard && !showOptions && !showHelp && (
           <StartMenu
-            onStart={() => setIsGameStarted(true)}
+            onStart={() => {
+              setScore(0);
+              setIsGameStarted(true);
+            }}
             highScore={highScore}
+            onShowLeaderboard={handleShowLeaderboard}
             onShowOptions={() => setShowOptions(true)}
             onShowHelp={() => setShowHelp(true)}
           />
@@ -289,8 +400,8 @@ const App = () => {
         {isGameStarted && !isPaused && (
           <div className="absolute inset-0 bg-gray-200 flex items-center justify-center">
             <canvas ref={canvasRef} width="400" height="600" style={{ backgroundColor: '#f0f8ff' }}></canvas>
+            <div className="absolute top-4 left-4 text-gray-800 font-bold text-xl">Score: {Math.floor(score)}</div>
             <button className="absolute top-4 right-4 text-white bg-blue-500 px-4 py-2 rounded-lg" onClick={() => setIsPaused(true)}>Pause</button>
-            <button className="absolute bottom-4 left-4 text-white bg-red-500 px-4 py-2 rounded-lg" onClick={() => { setFinalScore(1234); setIsGameStarted(false); }}>Game Over</button>
           </div>
         )}
         {showLeaderboard && (
@@ -320,12 +431,13 @@ const App = () => {
           <GameOverMenu
             finalScore={finalScore}
             highScore={highScore}
-            onRestart={() => { setFinalScore(0); setIsGameStarted(true) }}
+            onRestart={() => { setFinalScore(0); setScore(0); setIsGameStarted(true) }}
+            onShowLeaderboard={handleShowLeaderboard}
           />
         )}
       </div>
     </div>
   );
-};
+}
 
 export default App;
