@@ -60,7 +60,6 @@ const DarkTitle = styled.h2`
 
 
 const PauseMenu = ({ onResume, onQuit }) => {
-  
   return (
     <DarkMenuContainer>
       <DarkTitle>Paused</DarkTitle>
@@ -73,5 +72,4 @@ const PauseMenu = ({ onResume, onQuit }) => {
     </DarkMenuContainer>
   );
 };
-
 export default PauseMenu;

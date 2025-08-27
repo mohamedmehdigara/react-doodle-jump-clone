@@ -64,6 +64,7 @@ const HelpModal = ({ onBack }) => {
           <ul className="list-disc list-inside space-y-1">
             <li>Move Left: Left Arrow or 'A'</li>
             <li>Move Right: Right Arrow or 'D'</li>
+            <li>**Shoot:** Spacebar</li>
             <li>Pause Game: 'P' or 'Escape'</li>
           </ul>
         </div>
@@ -74,6 +75,22 @@ const HelpModal = ({ onBack }) => {
             <li>**Blue Platforms:** Spring platforms. Give you a much higher jump!</li>
             <li>**Brown Platforms:** Break after you land on them once.</li>
             <li>**White Platforms:** They move! Be careful not to miss them.</li>
+            <li>**Purple Platforms:** Super-jump platforms. Landing on these will give you a huge boost!</li>
+          </ul>
+        </div>
+        <div>
+          <h3 className="font-bold text-lg mb-1">Power-ups</h3>
+          <ul className="list-disc list-inside space-y-1">
+            <li>**Red Springs:** Collect these for a massive one-time super-jump!</li>
+            <li>**Yellow Shield:** Collect this to become temporarily invulnerable to enemies.</li>
+            <li>**Blue Lightning Bolt:** Collect this to get special bouncing projectiles for a limited time.</li>
+          </ul>
+        </div>
+        <div>
+          <h3 className="font-bold text-lg mb-1">Enemies</h3>
+          <ul className="list-disc list-inside space-y-1">
+            <li>**Red Enemies:** Avoid these! Colliding with an enemy will end the game, unless you have a shield.</li>
+            <li>**The Boss:** A larger, stationary enemy that appears after a high score. It has a health bar and shoots at you. Defeat it to win!</li>
           </ul>
         </div>
       </div>

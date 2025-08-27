@@ -158,6 +158,41 @@ const MessageBoxContainer = styled.div`
 // ===================================
 // MAIN APP COMPONENT
 // ===================================
+
+
+// ===================================
+// IN-GAME MESSAGE BOX COMPONENT
+// ===================================
+
+// ===================================
+// START MENU COMPONENT
+// ===================================
+
+// ===================================
+// GAME OVER MENU COMPONENT
+// ===================================
+
+
+// ===================================
+// LEADERBOARD COMPONENT
+// ===================================
+
+// ===================================
+// PAUSE MENU COMPONENT
+// ===================================
+
+
+// ===================================
+// OPTIONS MENU COMPONENT
+// ===================================
+
+// ===================================
+// HELP MODAL COMPONENT
+// ===================================
+
+// ===================================
+// MAIN APP COMPONENT
+// ===================================
 const App = () => {
   const [isGameStarted, setIsGameStarted] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -165,6 +200,7 @@ const App = () => {
   const [showOptions, setShowOptions] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [message, setMessage] = useState(null);
+  const [bossMessage, setBossMessage] = useState(null);
   
   // Game state
   const canvasRef = useRef(null);
@@ -173,13 +209,14 @@ const App = () => {
   // Firestore-related states
   const [leaderboardScores, setLeaderboardScores] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [db, setDb] = useState(null);
+  const [auth, setAuth] = useState(null);
+  const [userId, setUserId] = useState(null);
+  const [userName] = useState('DoodleJumper'); // Hardcoded since profile editing is removed
   const [highScore, setHighScore] = useState(0);
   const [finalScore, setFinalScore] = useState(0);
 
   // --- Firebase and Firestore Setup ---
-
-
-      
 
 
   // --- Game Loop and Drawing Logic ---
@@ -198,6 +235,19 @@ const App = () => {
 
     // Game variables
     const gravity = 0.3;
+    const normalJumpVelocity = -10;
+    const springJumpVelocity = -20;
+    const superJumpVelocity = -30;
+    const shieldDuration = 5000; // 5 seconds
+    const bouncingProjectileDuration = 10000; // 10 seconds
+    const BOSS_SCORE_THRESHOLD = 2000;
+    const BOSS_SPAWN_Y = canvas.height / 4;
+    const BOSS_WIDTH = 100;
+    const BOSS_HEIGHT = 80;
+    const BOSS_MOVE_SPEED = 2;
+    const BOSS_HEALTH = 10;
+    const BOSS_FIRE_COOLDOWN = 1500; // 1.5 seconds
+
     let player = {
       x: canvas.width / 2,
       y: canvas.height - 100,
@@ -205,8 +255,21 @@ const App = () => {
       height: 40,
       velocityY: 0,
       velocityX: 0,
+      hasShield: false,
+      shieldEndTime: 0,
+      hasBouncingProjectiles: false,
+      bouncingProjectileEndTime: 0,
     };
     let platforms = [];
+    let enemies = [];
+    let projectiles = [];
+    let springs = [];
+    let shields = [];
+    let bouncingProjectileItems = [];
+    let boss = null;
+    let bossProjectiles = [];
+    let lastBossFireTime = 0;
+
     const initialPlatformCount = 10;
     const platformWidth = 70;
     const platformHeight = 10;
@@ -218,6 +281,9 @@ const App = () => {
     let keys = {};
     const handleKeyDown = (e) => {
       keys[e.key] = true;
+      if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
+        setIsPaused(prev => !prev);
+      }
     };
     const handleKeyUp = (e) => {
       keys[e.key] = false;
@@ -226,36 +292,129 @@ const App = () => {
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
 
-    // Function to create a new platform at the top
+    // Function to create a new platform at the top with a random type
     const createNewPlatform = () => {
-        platforms.push({
-            x: Math.random() * (canvas.width - platformWidth),
-            y: -platformHeight, // Start just above the canvas
-            width: platformWidth,
-            height: platformHeight,
-            color: 'green'
-        });
+      // Adjusted probabilities to include the new purple platform
+      const rand = Math.random();
+      let type = '';
+      if (rand < 0.6) {
+        type = 'green';
+      } else if (rand < 0.7) {
+        type = 'blue';
+      } else if (rand < 0.8) {
+        type = 'brown';
+      } else if (rand < 0.95) {
+        type = 'moving';
+      } else {
+        type = 'purple'; // The new super-jump platform
+      }
+      
+      platforms.push({
+        x: Math.random() * (canvas.width - platformWidth),
+        y: -platformHeight, // Start just above the canvas
+        width: platformWidth,
+        height: platformHeight,
+        type: type,
+        color: type === 'green' ? '#22c55e' : (type === 'blue' ? '#3b82f6' : (type === 'brown' ? '#a16207' : (type === 'moving' ? '#FFFFFF' : '#8b5cf6'))),
+        velocityX: type === 'moving' ? (Math.random() > 0.5 ? 2 : -2) : 0,
+      });
     };
 
-    // Function to initialize platforms
+    // Function to create a new enemy
+    const createNewEnemy = () => {
+      enemies.push({
+        x: Math.random() * (canvas.width - 30),
+        y: -30,
+        width: 30,
+        height: 30,
+        velocityX: Math.random() > 0.5 ? 1 : -1,
+      });
+    };
+
+    // Function to create a new projectile
+    const createProjectile = () => {
+      const isBouncing = player.hasBouncingProjectiles;
+      projectiles.push({
+        x: player.x + player.width / 2 - 2.5,
+        y: player.y,
+        width: isBouncing ? 10 : 5,
+        height: isBouncing ? 20 : 10,
+        velocityY: -10,
+        velocityX: isBouncing ? (Math.random() > 0.5 ? 2 : -2) : 0, // Give initial horizontal velocity
+        isBouncing: isBouncing,
+      });
+    };
+
+    // Function to create a new spring
+    const createNewSpring = (platform) => {
+      springs.push({
+        x: platform.x + platform.width / 2 - 5,
+        y: platform.y - 20,
+        width: 10,
+        height: 20,
+        color: '#ff0000', // Red color for springs
+      });
+    };
+
+    // Function to create a new shield
+    const createNewShield = () => {
+      shields.push({
+        x: Math.random() * (canvas.width - 20),
+        y: -20,
+        width: 20,
+        height: 20,
+        color: 'yellow',
+      });
+    };
+
+    // Function to create a new bouncing projectile power-up
+    const createNewBouncingProjectileItem = () => {
+      bouncingProjectileItems.push({
+        x: Math.random() * (canvas.width - 20),
+        y: -20,
+        width: 20,
+        height: 20,
+        color: 'cyan', // Blue lightning bolt
+      });
+    };
+    
+    // Function to initialize platforms, with a chance to spawn springs on them
     const createInitialPlatforms = () => {
         platforms = [];
+        springs = [];
+        shields = [];
+        bouncingProjectileItems = [];
         platforms.push({
             x: canvas.width / 2 - platformWidth / 2,
             y: canvas.height - 50,
             width: platformWidth,
             height: platformHeight,
-            color: 'green'
+            type: 'green',
+            color: '#22c55e',
+            velocityX: 0,
         });
         for (let i = 1; i < initialPlatformCount; i++) {
-            platforms.push({
-                x: Math.random() * (canvas.width - platformWidth),
-                y: (canvas.height / initialPlatformCount) * i,
-                width: platformWidth,
-                height: platformHeight,
-                color: 'green'
-            });
+            createNewPlatform();
+            platforms[i].y = (canvas.height / initialPlatformCount) * i;
+            if (Math.random() < 0.1) { // 10% chance to spawn a spring on a platform
+                createNewSpring(platforms[i]);
+            }
         }
+    };
+
+    // Function to create the boss
+    const createBoss = () => {
+      boss = {
+        x: canvas.width / 2 - BOSS_WIDTH / 2,
+        y: -BOSS_HEIGHT, // Start above the screen
+        width: BOSS_WIDTH,
+        height: BOSS_HEIGHT,
+        velocityX: BOSS_MOVE_SPEED,
+        health: BOSS_HEALTH,
+        maxHealth: BOSS_HEALTH,
+        isAlive: true,
+      };
+      setBossMessage("The Boss has appeared!");
     };
 
     // Function to draw all platforms
@@ -266,21 +425,138 @@ const App = () => {
       });
     };
 
+    // Function to draw enemies
+    const drawEnemies = () => {
+      enemies.forEach(enemy => {
+        ctx.fillStyle = '#dc2626'; // Red color
+        ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+      });
+    };
+
+    // Function to draw projectiles
+    const drawProjectiles = () => {
+      projectiles.forEach(projectile => {
+        if (projectile.isBouncing) {
+          ctx.fillStyle = 'blue';
+          // Draw a simple lightning bolt shape
+          ctx.beginPath();
+          ctx.moveTo(projectile.x + projectile.width / 2, projectile.y);
+          ctx.lineTo(projectile.x, projectile.y + projectile.height / 2);
+          ctx.lineTo(projectile.x + projectile.width / 2, projectile.y + projectile.height / 2);
+          ctx.lineTo(projectile.x + projectile.width / 2, projectile.y + projectile.height);
+          ctx.lineTo(projectile.x + projectile.width, projectile.y + projectile.height / 2);
+          ctx.lineTo(projectile.x + projectile.width / 2, projectile.y + projectile.height / 2);
+          ctx.closePath();
+          ctx.fill();
+        } else {
+          ctx.fillStyle = 'orange';
+          ctx.fillRect(projectile.x, projectile.y, projectile.width, projectile.height);
+        }
+      });
+    };
+    
+    // Function to draw boss projectiles
+    const drawBossProjectiles = () => {
+      bossProjectiles.forEach(proj => {
+        ctx.fillStyle = 'purple';
+        ctx.beginPath();
+        ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    };
+
+    // Function to draw springs
+    const drawSprings = () => {
+      springs.forEach(spring => {
+        ctx.fillStyle = spring.color;
+        ctx.fillRect(spring.x, spring.y, spring.width, spring.height);
+      });
+    };
+
+    // Function to draw shields
+    const drawShields = () => {
+      shields.forEach(shield => {
+        ctx.fillStyle = shield.color;
+        ctx.beginPath();
+        ctx.arc(shield.x + shield.width / 2, shield.y + shield.height / 2, shield.width / 2, 0, 2 * Math.PI);
+        ctx.fill();
+      });
+    };
+
+    // Function to draw bouncing projectile power-up
+    const drawBouncingProjectileItems = () => {
+      bouncingProjectileItems.forEach(item => {
+        ctx.fillStyle = item.color;
+        // Draw a simple lightning bolt shape
+        ctx.beginPath();
+        ctx.moveTo(item.x + item.width / 2, item.y);
+        ctx.lineTo(item.x, item.y + item.height / 2);
+        ctx.lineTo(item.x + item.width / 2, item.y + item.height / 2);
+        ctx.lineTo(item.x + item.width / 2, item.y + item.height);
+        ctx.lineTo(item.x + item.width, item.y + item.height / 2);
+        ctx.lineTo(item.x + item.width / 2, item.y + item.height / 2);
+        ctx.closePath();
+        ctx.fill();
+      });
+    };
+
     // Function to draw player
     const drawPlayer = () => {
+      if (player.hasShield) {
+        ctx.fillStyle = '#87ceeb'; // Sky blue for shield
+        ctx.beginPath();
+        ctx.arc(player.x + player.width / 2, player.y + player.height / 2, player.width, 0, 2 * Math.PI);
+        ctx.fill();
+      }
       ctx.fillStyle = 'blue';
       ctx.fillRect(player.x, player.y, player.width, player.height);
     };
 
+    // Function to draw the boss and its health bar
+    const drawBoss = () => {
+      if (!boss || !boss.isAlive) return;
+
+      // Draw boss
+      ctx.fillStyle = 'darkred';
+      ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
+
+      // Draw health bar
+      const healthBarWidth = 100;
+      const healthBarHeight = 10;
+      const healthBarX = canvas.width / 2 - healthBarWidth / 2;
+      const healthBarY = 40;
+
+      ctx.fillStyle = 'red';
+      ctx.fillRect(healthBarX, healthBarY, healthBarWidth, healthBarHeight);
+
+      const currentHealthWidth = (boss.health / boss.maxHealth) * healthBarWidth;
+      ctx.fillStyle = 'green';
+      ctx.fillRect(healthBarX, healthBarY, currentHealthWidth, healthBarHeight);
+    };
+
     // Function for collision detection
-    const checkCollision = (platform) => {
+    const checkCollision = (rect1, rect2) => {
       return (
-        player.y + player.height >= platform.y &&
-        player.y + player.height <= platform.y + platform.height &&
-        player.x + player.width >= platform.x &&
-        player.x <= platform.x + platform.width &&
-        player.velocityY > 0
+        rect1.x < rect2.x + rect2.width &&
+        rect1.x + rect1.width > rect2.x &&
+        rect1.y < rect2.y + rect2.height &&
+        rect1.y + rect1.height > rect2.y
       );
+    };
+
+    const checkCircleRectCollision = (circle, rect) => {
+      const distX = Math.abs(circle.x - rect.x - rect.width / 2);
+      const distY = Math.abs(circle.y - rect.y - rect.height / 2);
+
+      if (distX > (rect.width / 2 + circle.radius)) { return false; }
+      if (distY > (rect.height / 2 + circle.radius)) { return false; }
+
+      if (distX <= (rect.width / 2)) { return true; }
+      if (distY <= (rect.height / 2)) { return true; }
+
+      const dx = distX - rect.width / 2;
+      const dy = distY - rect.height / 2;
+      return (dx * dx + dy * dy <= (circle.radius * circle.radius));
     };
 
     // Function to draw score
@@ -295,12 +571,27 @@ const App = () => {
       // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Update horizontal velocity based on key presses
+      // Check and disable shield if duration has passed
+      if (player.hasShield && Date.now() > player.shieldEndTime) {
+        player.hasShield = false;
+        setMessage("Shield deactivated!");
+      }
+      // Check and disable bouncing projectiles if duration has passed
+      if (player.hasBouncingProjectiles && Date.now() > player.bouncingProjectileEndTime) {
+        player.hasBouncingProjectiles = false;
+        setMessage("Bouncing projectiles deactivated!");
+      }
+
+      // Handle key presses
       if (keys['ArrowLeft'] || keys['a']) {
         player.x -= playerSpeed;
       }
       if (keys['ArrowRight'] || keys['d']) {
         player.x += playerSpeed;
+      }
+      if (keys[' ']) { // Spacebar for shooting
+        createProjectile();
+        keys[' '] = false; // Prevent continuous shooting
       }
       
       // Wrap player around the screen
@@ -310,11 +601,94 @@ const App = () => {
         player.x = -player.width;
       }
 
-      // If player is moving up and reaches top of screen, scroll platforms down
+      // Update moving platforms' position and reverse direction if needed
+      platforms.forEach(platform => {
+        if (platform.type === 'moving') {
+          platform.x += platform.velocityX;
+          if (platform.x + platform.width > canvas.width || platform.x < 0) {
+            platform.velocityX *= -1;
+          }
+        }
+      });
+      
+      // Update enemies' position
+      enemies.forEach(enemy => {
+        enemy.x += enemy.velocityX;
+        if (enemy.x + enemy.width > canvas.width || enemy.x < 0) {
+            enemy.velocityX *= -1;
+        }
+      });
+      
+      // Handle boss logic
+      if (score >= BOSS_SCORE_THRESHOLD && boss === null) {
+        createBoss();
+      }
+      
+      if (boss && boss.isAlive) {
+        // Move boss
+        boss.x += boss.velocityX;
+        if (boss.x + boss.width > canvas.width || boss.x < 0) {
+          boss.velocityX *= -1;
+        }
+
+        // Boss fires projectiles
+        if (Date.now() - lastBossFireTime > BOSS_FIRE_COOLDOWN) {
+          const angle = Math.atan2(player.y - (boss.y + boss.height), player.x - (boss.x + boss.width / 2));
+          bossProjectiles.push({
+            x: boss.x + boss.width / 2,
+            y: boss.y + boss.height,
+            radius: 5,
+            velocityX: Math.cos(angle) * 3,
+            velocityY: Math.sin(angle) * 3,
+          });
+          lastBossFireTime = Date.now();
+        }
+      }
+
+      // Update projectiles' position
+      projectiles.forEach(projectile => {
+        projectile.y += projectile.velocityY;
+        if (projectile.isBouncing) {
+          projectile.x += projectile.velocityX;
+          // Reverse horizontal velocity if it hits the walls
+          if (projectile.x + projectile.width > canvas.width || projectile.x < 0) {
+            projectile.velocityX *= -1;
+          }
+        }
+      });
+
+      // Update boss projectiles' position
+      bossProjectiles.forEach(proj => {
+        proj.x += proj.velocityX;
+        proj.y += proj.velocityY;
+      });
+      
+      // If player is moving up and reaches top of screen, scroll elements down
       if (player.velocityY < 0 && player.y < canvas.height / 2) {
           platforms.forEach(platform => {
               platform.y -= player.velocityY;
           });
+          enemies.forEach(enemy => {
+            enemy.y -= player.velocityY;
+          });
+          projectiles.forEach(projectile => {
+            projectile.y -= player.velocityY;
+          });
+          bossProjectiles.forEach(proj => {
+            proj.y -= player.velocityY;
+          });
+          springs.forEach(spring => {
+            spring.y -= player.velocityY;
+          });
+          shields.forEach(shield => {
+            shield.y -= player.velocityY;
+          });
+          bouncingProjectileItems.forEach(item => {
+            item.y -= player.velocityY;
+          });
+          if (boss) {
+            boss.y -= player.velocityY;
+          }
           score += -player.velocityY * 0.1;
       }
 
@@ -323,17 +697,137 @@ const App = () => {
       player.y += player.velocityY;
 
       // Check for platform collisions
-      platforms.forEach(platform => {
-        if (checkCollision(platform)) {
-          // If collision, make player jump
-          player.velocityY = -10;
+      for (let i = 0; i < platforms.length; i++) {
+        if (checkCollision(player, platforms[i]) && player.velocityY > 0) {
+          // If collision, make player jump based on platform type
+          if (platforms[i].type === 'green' || platforms[i].type === 'moving') {
+            player.velocityY = normalJumpVelocity;
+          } else if (platforms[i].type === 'blue') {
+            player.velocityY = springJumpVelocity;
+          } else if (platforms[i].type === 'purple') {
+            player.velocityY = superJumpVelocity; // Super jump!
+          } else if (platforms[i].type === 'brown') {
+            platforms.splice(i, 1); // Remove the platform
+            i--; // Decrement index to avoid skipping
+            player.velocityY = normalJumpVelocity;
+          }
         }
-      });
+      }
+
+      // Check for spring collisions
+      for (let i = springs.length - 1; i >= 0; i--) {
+        if (checkCollision(player, springs[i])) {
+          player.velocityY = superJumpVelocity;
+          springs.splice(i, 1); // Remove the spring
+        }
+      }
+
+      // Check for shield collisions
+      for (let i = shields.length - 1; i >= 0; i--) {
+        if (checkCollision(player, shields[i])) {
+          player.hasShield = true;
+          player.shieldEndTime = Date.now() + shieldDuration;
+          setMessage("Shield activated!");
+          shields.splice(i, 1);
+        }
+      }
+
+      // Check for bouncing projectile item collisions
+      for (let i = bouncingProjectileItems.length - 1; i >= 0; i--) {
+        if (checkCollision(player, bouncingProjectileItems[i])) {
+          player.hasBouncingProjectiles = true;
+          player.bouncingProjectileEndTime = Date.now() + bouncingProjectileDuration;
+          setMessage("Bouncing projectiles activated!");
+          bouncingProjectileItems.splice(i, 1);
+        }
+      }
+
+      // Check for enemy collisions
+      for (let i = 0; i < enemies.length; i++) {
+        if (checkCollision(player, enemies[i])) {
+          if (player.hasShield) {
+            enemies.splice(i, 1); // Destroy enemy, but player is safe
+            setMessage("Enemy destroyed by shield!");
+          } else {
+            setFinalScore(Math.floor(score));
+            setScore(0);
+            setIsGameStarted(false);
+            return;
+          }
+        }
+      }
       
-      // Remove platforms that are off-screen and add new ones
+      // Check for projectile-enemy collisions
+      for (let i = projectiles.length - 1; i >= 0; i--) {
+        for (let j = enemies.length - 1; j >= 0; j--) {
+          if (checkCollision(projectiles[i], enemies[j])) {
+            projectiles.splice(i, 1);
+            enemies.splice(j, 1);
+            break; // Break inner loop to avoid issues with splice
+          }
+        }
+      }
+      
+      // Check for projectile-boss collisions
+      if (boss && boss.isAlive) {
+        for (let i = projectiles.length - 1; i >= 0; i--) {
+          if (checkCollision(projectiles[i], boss)) {
+            boss.health -= 1;
+            projectiles.splice(i, 1);
+            if (boss.health <= 0) {
+              boss.isAlive = false;
+              setFinalScore(Math.floor(score) + 1000); // Bonus score for defeating boss
+              setBossMessage("You defeated the Boss! Great job!");
+              setTimeout(() => {
+                setScore(0);
+                setIsGameStarted(false);
+              }, 3000); // Game ends after 3 seconds
+            } else {
+              setBossMessage("Boss hit!");
+            }
+            break;
+          }
+        }
+        
+        // Check for boss projectile-player collisions
+        for (let i = bossProjectiles.length - 1; i >= 0; i--) {
+          if (checkCircleRectCollision(bossProjectiles[i], player)) {
+            if (player.hasShield) {
+              bossProjectiles.splice(i, 1);
+              setMessage("Shield absorbed boss projectile!");
+            } else {
+              setFinalScore(Math.floor(score));
+              setScore(0);
+              setIsGameStarted(false);
+              return;
+            }
+          }
+        }
+      }
+
+      // Remove off-screen elements and add new ones
       platforms = platforms.filter(platform => platform.y < canvas.height);
+      enemies = enemies.filter(enemy => enemy.y < canvas.height);
+      projectiles = projectiles.filter(projectile => projectile.y > -projectile.height);
+      springs = springs.filter(spring => spring.y < canvas.height);
+      shields = shields.filter(shield => shield.y < canvas.height);
+      bouncingProjectileItems = bouncingProjectileItems.filter(item => item.y < canvas.height);
+      bossProjectiles = bossProjectiles.filter(proj => proj.y < canvas.height && proj.x > 0 && proj.x < canvas.width);
+
       while (platforms.length < initialPlatformCount) {
           createNewPlatform();
+      }
+
+      if (Math.random() < 0.005) { // Small chance to spawn a new enemy
+        createNewEnemy();
+      }
+
+      if (Math.random() < 0.001) { // Very small chance to spawn a new shield
+        createNewShield();
+      }
+
+      if (Math.random() < 0.0005) { // Very small chance to spawn a bouncing projectile item
+        createNewBouncingProjectileItem();
       }
 
       // Check for game over
@@ -347,7 +841,14 @@ const App = () => {
       
       // Draw all elements
       drawPlatforms();
+      drawEnemies();
+      drawProjectiles();
+      drawBossProjectiles();
+      drawSprings();
+      drawShields();
+      drawBouncingProjectileItems();
       drawPlayer();
+      drawBoss();
       drawScore();
 
       animationFrameId = requestAnimationFrame(animate);
@@ -365,7 +866,7 @@ const App = () => {
 
   }, [isGameStarted, isPaused, setScore, setFinalScore, setIsGameStarted]);
 
-
+  
   const quitGame = () => {
     setIsGameStarted(false);
     setIsPaused(false);
@@ -377,7 +878,8 @@ const App = () => {
 
   const handleShowLeaderboard = () => {
     const isNewHighScore = finalScore > highScore;
-     setShowLeaderboard(true);
+    
+    setShowLeaderboard(true);
   };
   
   return (
@@ -385,6 +887,7 @@ const App = () => {
       <div className="bg-white rounded-xl shadow-lg p-6 flex flex-col items-center relative" style={{ width: '400px', height: '600px' }}>
         <h1 className="text-3xl font-bold text-gray-800 mb-4">Doodle Jump</h1>
         <MessageBox message={message} />
+        <MessageBox message={bossMessage} />
         {!isGameStarted && !showLeaderboard && !showOptions && !showHelp && (
           <StartMenu
             onStart={() => {
@@ -395,6 +898,7 @@ const App = () => {
             onShowLeaderboard={handleShowLeaderboard}
             onShowOptions={() => setShowOptions(true)}
             onShowHelp={() => setShowHelp(true)}
+            userName={userName}
           />
         )}
         {isGameStarted && !isPaused && (
@@ -409,6 +913,7 @@ const App = () => {
             scores={leaderboardScores}
             onBack={quitGame}
             loading={loading}
+            currentUserId={userId}
           />
         )}
         {isGameStarted && isPaused && (
@@ -438,6 +943,6 @@ const App = () => {
       </div>
     </div>
   );
-}
+};
 
 export default App;

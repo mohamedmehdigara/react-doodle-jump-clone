@@ -143,4 +143,5 @@ const StartMenu = ({ onStart, highScore, onShowLeaderboard, onShowOptions, onSho
   );
 };
 
+
 export default StartMenu;
