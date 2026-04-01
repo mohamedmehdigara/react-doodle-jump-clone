@@ -1,107 +1,91 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { create } from 'zustand';
 
-/**
- * Sky Hop Ultra - Enhanced & Corrected Version
- * Features:
- * - Fluid physics engine with squash/stretch effects
- * - Multi-layer background depth
- * - Dynamic difficulty scaling
- * - Robust mobile-ready controls
- * - Self-contained styling system (no external dependencies)
+/** * SKY HOP ULTRA - ENHANCED VERSION
+ * Features: Particle Systems, Squash/Stretch Physics, Breaking/Moving Platforms, 
+ * Dynamic Difficulty, and Space-Depth Background Shifting.
  */
 
-const App = () => {
-  // --- Constants ---
-  const CANVAS_WIDTH = 450;
-  const CANVAS_HEIGHT = 700;
-  const GRAVITY = 0.38;
-  const JUMP_STRENGTH = -12.5;
-  const PLATFORM_WIDTH = 70;
-  const PLATFORM_HEIGHT = 14;
-  const PLAYER_SIZE = 40;
+// --- 1. GLOBAL STORE ---
+const useGameStore = create((set) => ({
+  highScore: parseInt(localStorage.getItem('skyhop_ultra_high_score') || '0'),
+  gameState: 'START',
+  setGameState: (state) => set({ gameState: state }),
+  updateHighScore: (score) => set((state) => {
+    if (score > state.highScore) {
+      localStorage.setItem('skyhop_ultra_high_score', score.toString());
+      return { highScore: score };
+    }
+    return state;
+  }),
+}));
 
-  // --- State ---
-  const [gameState, setGameState] = useState('START');
-  const [score, setScore] = useState(0);
-  const [highScore, setHighScore] = useState(0);
-
-  // --- Refs ---
+export default function App() {
   const canvasRef = useRef(null);
-  const gameRef = useRef({
-    player: { 
-      x: 205, y: 500, vx: 0, vy: 0, 
-      rotation: 0, squash: 1, stretch: 1,
-      facing: 1
-    },
+  const [currentScore, setCurrentScore] = useState(0);
+  const { highScore, gameState, setGameState, updateHighScore } = useGameStore();
+  
+  // Configuration
+  const CANVAS_WIDTH = 400;
+  const CANVAS_HEIGHT = 640;
+  const PLAYER_SIZE = 36;
+
+  // Engine Refs (High-frequency data)
+  const engine = useRef({
+    player: { x: 180, y: 400, vx: 0, vy: -15, w: PLAYER_SIZE, h: PLAYER_SIZE },
     platforms: [],
     particles: [],
     keys: {},
     score: 0,
-    shake: 0,
-    frame: 0,
-    difficulty: 1
+    cameraY: 0,
+    reqId: null,
+    frameCount: 0
   });
-  const requestRef = useRef();
 
-  // --- Game Mechanics ---
-  const initGame = () => {
-    const g = gameRef.current;
-    g.score = 0;
-    g.difficulty = 1;
-    setScore(0);
-    
-    g.player = {
-      x: CANVAS_WIDTH / 2 - PLAYER_SIZE / 2,
-      y: CANVAS_HEIGHT - 150,
-      vx: 0,
-      vy: JUMP_STRENGTH,
-      rotation: 0,
-      squash: 1,
-      stretch: 1,
-      facing: 1
-    };
-
-    g.platforms = [];
-    // Initial starting platform
-    g.platforms.push({
-      x: CANVAS_WIDTH / 2 - PLATFORM_WIDTH / 2,
-      y: CANVAS_HEIGHT - 50,
-      width: PLATFORM_WIDTH * 1.5,
-      height: PLATFORM_HEIGHT,
-      type: 'normal'
-    });
-
-    // Generate initial climb
-    for (let i = 1; i < 10; i++) {
-      g.platforms.push(generatePlatform(CANVAS_HEIGHT - i * 85 - 50));
-    }
-    
-    setGameState('PLAYING');
-  };
-
-  const generatePlatform = (y) => {
-    const g = gameRef.current;
+  // --- HELPER: CREATE PLATFORM ---
+  const createPlatform = (y) => {
+    const scoreFactor = Math.min(engine.current.score / 5000, 1);
     const typeRoll = Math.random();
-    let type = 'normal';
     
-    // Increase difficulty based on score
-    if (g.score > 5000 && typeRoll > 0.7) type = 'moving';
-    if (g.score > 10000 && typeRoll > 0.85) type = 'fragile';
+    let type = 'normal';
+    if (scoreFactor > 0.2 && typeRoll < 0.15) type = 'breaking';
+    else if (scoreFactor > 0.4 && typeRoll < 0.35) type = 'moving';
 
+    const width = 70 - (scoreFactor * 20); // Get smaller as you go
     return {
-      x: Math.random() * (CANVAS_WIDTH - PLATFORM_WIDTH),
-      y,
-      width: PLATFORM_WIDTH,
-      height: PLATFORM_HEIGHT,
-      type,
-      vx: type === 'moving' ? (Math.random() * 2 + 1) * (Math.random() > 0.5 ? 1 : -1) : 0,
-      broken: false
+      x: Math.random() * (CANVAS_WIDTH - width),
+      y: y,
+      w: width,
+      h: 12,
+      type: type,
+      phase: Math.random() * Math.PI * 2, // For moving platforms
+      speed: 1 + (scoreFactor * 3)
     };
   };
 
-  const createParticles = (x, y, color, count = 5) => {
-    for (let i = 0; i < count; i++) {
-      gameRef.current.particles.push({
+  // --- INITIALIZE ---
+  const initGame = useCallback(() => {
+    engine.current.score = 0;
+    engine.current.particles = [];
+    setCurrentScore(0);
+    engine.current.player = { x: 180, y: 400, vx: 0, vy: -16, w: PLAYER_SIZE, h: PLAYER_SIZE };
+    
+    const startPlatforms = [];
+    for (let i = 0; i < 8; i++) {
+      startPlatforms.push(createPlatform(640 - (i * 90)));
+    }
+    // Ensure first platform is under player
+    startPlatforms[0].x = 150;
+    startPlatforms[0].type = 'normal';
+    
+    engine.current.platforms = startPlatforms;
+    setGameState('PLAYING');
+  }, [setGameState]);
+
+  // --- SPAWN PARTICLES ---
+  const spawnParticles = (x, y, color) => {
+    for (let i = 0; i < 8; i++) {
+      engine.current.particles.push({
         x, y,
         vx: (Math.random() - 0.5) * 6,
         vy: (Math.random() - 0.5) * 6,
@@ -111,321 +95,216 @@ const App = () => {
     }
   };
 
-  const update = () => {
+  // --- MAIN LOOP ---
+  const update = useCallback(() => {
     if (gameState !== 'PLAYING') return;
+    const ctx = canvasRef.current.getContext('2d');
+    const e = engine.current;
+    const p = e.player;
+    e.frameCount++;
 
-    const g = gameRef.current;
-    const p = g.player;
-    g.frame++;
-
-    // Horizontal Logic
-    if (g.keys['ArrowLeft'] || g.keys['a']) {
-      p.vx -= 0.85;
-      p.facing = -1;
-    } else if (g.keys['ArrowRight'] || g.keys['d']) {
-      p.vx += 0.85;
-      p.facing = 1;
-    } else {
-      p.vx *= 0.82;
-    }
-
-    p.vx = Math.min(Math.max(p.vx, -10), 10);
+    // 1. INPUT & PHYSICS
+    if (e.keys['ArrowLeft'] || e.keys['a']) p.vx -= 1.0;
+    if (e.keys['ArrowRight'] || e.keys['d']) p.vx += 1.0;
+    p.vx *= 0.88;
+    p.vy += 0.45;
     p.x += p.vx;
-    
-    // Vertical Logic
-    p.vy += GRAVITY;
     p.y += p.vy;
 
-    // Visual Polish
-    p.rotation = p.vx * 0.05;
-    p.stretch = 1 + Math.abs(p.vy) * 0.02;
-    p.squash = 1 / p.stretch;
+    if (p.x > CANVAS_WIDTH) p.x = -p.w;
+    if (p.x < -p.w) p.x = CANVAS_WIDTH;
 
-    // Screen Wrap
-    if (p.x > CANVAS_WIDTH) p.x = -PLAYER_SIZE;
-    if (p.x < -PLAYER_SIZE) p.x = CANVAS_WIDTH;
-
-    // Scrolling Camera
-    if (p.y < CANVAS_HEIGHT * 0.4) {
-      const scrollAmount = CANVAS_HEIGHT * 0.4 - p.y;
-      p.y = CANVAS_HEIGHT * 0.4;
-      g.score += Math.floor(scrollAmount);
-      setScore(g.score);
-
-      g.platforms.forEach(plt => {
-        plt.y += scrollAmount;
-        if (plt.y > CANVAS_HEIGHT) {
-          Object.assign(plt, generatePlatform(0));
-        }
-      });
-    }
-
-    // Collision Detection
-    if (p.vy > 0) {
-      g.platforms.forEach(plt => {
-        if (!plt.broken && 
-            p.x + PLAYER_SIZE * 0.8 > plt.x && 
-            p.x + PLAYER_SIZE * 0.2 < plt.x + plt.width &&
-            p.y + PLAYER_SIZE > plt.y && 
-            p.y + PLAYER_SIZE < plt.y + plt.height + p.vy) {
-          
-          p.vy = JUMP_STRENGTH;
-          p.y = plt.y - PLAYER_SIZE;
-          g.shake = 4;
-          
-          if (plt.type === 'fragile') {
-            plt.broken = true;
-            createParticles(plt.x + plt.width/2, plt.y, '#f87171', 8);
-          } else {
-            createParticles(p.x + PLAYER_SIZE/2, p.y + PLAYER_SIZE, '#bef264', 3);
-          }
-        }
-      });
-    }
-
-    // Platform Updates
-    g.platforms.forEach(plt => {
+    // 2. PLATFORMS & COLLISION
+    e.platforms.forEach((plt, idx) => {
+      // Moving platform logic
       if (plt.type === 'moving') {
-        plt.x += plt.vx;
-        if (plt.x < 0 || plt.x + plt.width > CANVAS_WIDTH) plt.vx *= -1;
+        plt.x += Math.sin(e.frameCount * 0.05 + plt.phase) * plt.speed;
+        if (plt.x < 0 || plt.x + plt.w > CANVAS_WIDTH) plt.phase += Math.PI;
+      }
+
+      // Check collision
+      if (p.vy > 0 && 
+          p.x + p.w * 0.2 < plt.x + plt.w && 
+          p.x + p.w * 0.8 > plt.x && 
+          p.y + p.h > plt.y && 
+          p.y + p.h < plt.y + plt.h + p.vy) {
+        
+        p.vy = -15; // Bounce
+        spawnParticles(p.x + p.w/2, plt.y, plt.type === 'breaking' ? '#ef4444' : '#4ade80');
+        
+        if (plt.type === 'breaking') {
+          e.platforms[idx] = createPlatform(-20); // Break and respawn at top
+        }
       }
     });
 
-    // Particle Update
-    g.particles = g.particles.filter(pt => {
-      pt.x += pt.vx;
-      pt.y += pt.vy;
-      pt.life -= 0.02;
-      return pt.life > 0;
-    });
+    // 3. CAMERA & SCORING
+    if (p.y < 300) {
+      const diff = 300 - p.y;
+      p.y = 300;
+      e.score += Math.floor(diff);
+      setCurrentScore(Math.floor(e.score / 10));
 
-    if (g.shake > 0) g.shake *= 0.9;
-    if (p.y > CANVAS_HEIGHT + 100) setGameState('GAME_OVER');
-
-    draw();
-    requestRef.current = requestAnimationFrame(update);
-  };
-
-  const draw = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const g = gameRef.current;
-    const p = g.player;
-
-    ctx.save();
-    if (g.shake > 0.1) {
-      ctx.translate((Math.random() - 0.5) * g.shake, (Math.random() - 0.5) * g.shake);
+      e.platforms.forEach(plt => {
+        plt.y += diff;
+        if (plt.y > CANVAS_HEIGHT) {
+          Object.assign(plt, createPlatform(plt.y - CANVAS_HEIGHT));
+          plt.y = -20;
+        }
+      });
     }
 
-    // Background Gradient
-    const bgradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
-    bgradient.addColorStop(0, '#1e1b4b');
-    bgradient.addColorStop(1, '#020617');
-    ctx.fillStyle = bgradient;
+    // 4. PARTICLES
+    e.particles.forEach((part, i) => {
+      part.x += part.vx;
+      part.y += part.vy;
+      part.life -= 0.02;
+      if (part.life <= 0) e.particles.splice(i, 1);
+    });
+
+    // 5. GAME OVER
+    if (p.y > CANVAS_HEIGHT + 100) {
+      updateHighScore(Math.floor(e.score / 10));
+      setGameState('GAMEOVER');
+      return;
+    }
+
+    // 6. DRAWING
+    // Background shift based on height
+    const depth = Math.min(e.score / 20000, 1);
+    const bgColor = `rgb(${15 - depth * 10}, ${23 - depth * 15}, ${42 - depth * 20})`;
+    ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Dynamic Stars / Grid
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-    for(let i=0; i<20; i++) {
-      const x = (Math.sin(i * 123.4) * 0.5 + 0.5) * CANVAS_WIDTH;
-      const y = ((g.score * 0.1 + i * 100) % CANVAS_HEIGHT);
-      ctx.beginPath();
-      ctx.arc(x, y, 1, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // Draw Particles
+    e.particles.forEach(part => {
+      ctx.fillStyle = part.color;
+      ctx.globalAlpha = part.life;
+      ctx.fillRect(part.x, part.y, 4, 4);
+    });
+    ctx.globalAlpha = 1.0;
 
-    // Platforms
-    g.platforms.forEach(plt => {
-      if (plt.broken) return;
-      
-      const isMoving = plt.type === 'moving';
-      const isFragile = plt.type === 'fragile';
-      
-      ctx.fillStyle = isMoving ? '#38bdf8' : (isFragile ? '#f87171' : '#4ade80');
+    // Draw Platforms
+    e.platforms.forEach(plt => {
       ctx.shadowBlur = 10;
-      ctx.shadowColor = ctx.fillStyle;
-      
+      if (plt.type === 'breaking') {
+        ctx.fillStyle = '#ef4444';
+        ctx.shadowColor = '#ef4444aa';
+      } else if (plt.type === 'moving') {
+        ctx.fillStyle = '#3b82f6';
+        ctx.shadowColor = '#3b82f6aa';
+      } else {
+        ctx.fillStyle = '#4ade80';
+        ctx.shadowColor = '#4ade80aa';
+      }
       ctx.beginPath();
-      ctx.roundRect(plt.x, plt.y, plt.width, plt.height, 8);
+      ctx.roundRect(plt.x, plt.y, plt.w, plt.h, 4);
       ctx.fill();
-      ctx.shadowBlur = 0;
-      
-      // Platform Shine
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-      ctx.fillRect(plt.x + 10, plt.y + 3, plt.width - 20, 2);
     });
 
-    // Particles
-    g.particles.forEach(pt => {
-      ctx.globalAlpha = pt.life;
-      ctx.fillStyle = pt.color;
-      ctx.fillRect(pt.x, pt.y, 3, 3);
-    });
-    ctx.globalAlpha = 1;
-
-    // Player Rendering
-    ctx.save();
-    ctx.translate(p.x + PLAYER_SIZE / 2, p.y + PLAYER_SIZE / 2);
-    ctx.rotate(p.rotation);
-    ctx.scale(p.squash * p.facing, p.stretch);
-
-    // Body Shadow
-    ctx.shadowBlur = 15;
-    ctx.shadowColor = '#bef264';
+    // Draw Player (Squash & Stretch)
+    const stretch = Math.min(Math.abs(p.vy) * 0.02, 0.4);
+    const sW = p.vy < 0 ? p.w * (1 - stretch) : p.w * (1 + stretch * 0.5);
+    const sH = p.vy < 0 ? p.h * (1 + stretch) : p.h * (1 - stretch * 0.5);
+    
     ctx.fillStyle = '#bef264';
-    ctx.beginPath();
-    ctx.roundRect(-PLAYER_SIZE/2, -PLAYER_SIZE/2, PLAYER_SIZE, PLAYER_SIZE, 10);
-    ctx.fill();
+    ctx.shadowColor = '#bef264';
+    ctx.shadowBlur = 15;
+    ctx.save();
+    ctx.translate(p.x + p.w/2, p.y + p.h/2);
+    ctx.rotate(p.vx * 0.03);
+    ctx.fillRect(-sW/2, -sH/2, sW, sH);
+    ctx.restore();
     ctx.shadowBlur = 0;
-    
-    // Eyes
-    ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.arc(-10, -8, 4, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(10, -8, 4, 0, Math.PI * 2); ctx.fill();
-    
-    // Shine in eyes
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(-11, -10, 1.5, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(9, -10, 1.5, 0, Math.PI * 2); ctx.fill();
 
-    // Expression based on velocity
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    if (p.vy < 0) {
-      // Jumping / Happy
-      ctx.arc(0, 4, 6, 0.1 * Math.PI, 0.9 * Math.PI);
-    } else {
-      // Falling / Focused
-      ctx.moveTo(-5, 6);
-      ctx.lineTo(5, 6);
-    }
-    ctx.stroke();
+    e.reqId = requestAnimationFrame(update);
+  }, [gameState, setGameState, updateHighScore]);
 
-    ctx.restore();
-    ctx.restore();
-  };
-
+  // Listeners
   useEffect(() => {
-    const handleKeyDown = (e) => { gameRef.current.keys[e.key] = true; };
-    const handleKeyUp = (e) => { gameRef.current.keys[e.key] = false; };
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-
-    if (gameState === 'PLAYING') {
-      requestRef.current = requestAnimationFrame(update);
-    } else {
-      draw();
-    }
-
+    const handleKey = (e) => engine.current.keys[e.key] = e.type === 'keydown';
+    window.addEventListener('keydown', handleKey);
+    window.addEventListener('keyup', handleKey);
+    if (gameState === 'PLAYING') engine.current.reqId = requestAnimationFrame(update);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      cancelAnimationFrame(requestRef.current);
+      window.removeEventListener('keydown', handleKey);
+      window.removeEventListener('keyup', handleKey);
+      cancelAnimationFrame(engine.current.reqId);
     };
-  }, [gameState]);
-
-  useEffect(() => {
-    if (score > highScore) setHighScore(score);
-  }, [score, highScore]);
-
-  // --- Styles ---
-  const styles = {
-    wrapper: {
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      minHeight: '100vh', backgroundColor: '#020617', padding: '1rem',
-      fontFamily: '"Inter", system-ui, sans-serif', userSelect: 'none'
-    },
-    frame: {
-      position: 'relative', width: CANVAS_WIDTH, height: CANVAS_HEIGHT,
-      backgroundColor: '#0f172a', border: '12px solid #1e293b',
-      borderRadius: '2.5rem', boxShadow: '0 40px 100px -20px rgba(0,0,0,0.8)', overflow: 'hidden'
-    },
-    ui: {
-      position: 'absolute', top: '1.5rem', width: '100%', padding: '0 1.5rem',
-      display: 'flex', justifyContent: 'space-between', zIndex: 10, pointerEvents: 'none'
-    },
-    counter: {
-      background: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(10px)',
-      padding: '0.6rem 1.2rem', borderRadius: '1.2rem', border: '1px solid rgba(255, 255, 255, 0.1)',
-      color: 'white'
-    },
-    label: { fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', opacity: 0.5, letterSpacing: '0.1em' },
-    value: { fontSize: '1.4rem', fontWeight: 900, display: 'block', color: '#bef264' },
-    overlay: {
-      position: 'absolute', inset: 0, background: 'rgba(2, 6, 23, 0.9)',
-      backdropFilter: 'blur(8px)', display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', zIndex: 20, color: 'white'
-    },
-    title: { 
-      fontSize: '4.5rem', fontWeight: 900, margin: '0 0 0.5rem 0', fontStyle: 'italic', 
-      background: 'linear-gradient(to bottom, #fff, #94a3b8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
-    },
-    button: (bg) => ({
-      background: bg || '#bef264', color: bg ? 'white' : 'black',
-      padding: '1.2rem 3rem', fontSize: '1.2rem', fontWeight: 900,
-      borderRadius: '1.2rem', border: 'none', cursor: 'pointer',
-      textTransform: 'uppercase', letterSpacing: '0.15em', transition: 'all 0.2s',
-      boxShadow: `0 10px 30px ${bg ? 'rgba(239, 68, 68, 0.3)' : 'rgba(190, 242, 100, 0.3)'}`
-    })
-  };
+  }, [gameState, update]);
 
   return (
-    <div style={styles.wrapper}>
-      <div style={styles.frame}>
-        <div style={styles.ui}>
-          <div style={styles.counter}>
-            <span style={styles.label}>Height</span>
-            <span style={styles.value}>{score.toLocaleString()}</span>
-          </div>
-          <div style={styles.counter}>
-            <span style={styles.label}>Best</span>
-            <span style={styles.value}>{highScore.toLocaleString()}</span>
-          </div>
+    <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 font-sans select-none">
+      <div className="w-[400px] flex justify-between items-end mb-4 px-4">
+        <div className="flex flex-col">
+          <span className="text-[10px] font-bold text-lime-500/50 uppercase tracking-[0.2em]">Altitude</span>
+          <span className="text-4xl font-black text-white italic leading-none">{currentScore}<span className="text-sm not-italic ml-1 opacity-50">m</span></span>
         </div>
+        <div className="text-right flex flex-col">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Record</span>
+          <span className="text-xl font-bold text-slate-400">{highScore}m</span>
+        </div>
+      </div>
 
-        <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />
+      <div className="relative group shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+        {/* Glow Border Effect */}
+        <div className="absolute -inset-1 bg-gradient-to-b from-lime-500/20 to-blue-500/20 rounded-[32px] blur opacity-75 group-hover:opacity-100 transition duration-1000"></div>
+        
+        <div className="relative rounded-[28px] overflow-hidden bg-slate-900 border border-white/10">
+          <canvas 
+            ref={canvasRef} 
+            width={CANVAS_WIDTH} 
+            height={CANVAS_HEIGHT}
+            className="cursor-none"
+          />
 
-        {gameState === 'START' && (
-          <div style={styles.overlay}>
-            <div style={{ padding: '2rem', background: '#bef264', borderRadius: '2rem', marginBottom: '2rem' }}>
-              <div style={{ width: 12, height: 12, background: 'black', borderRadius: '50%', display: 'inline-block', margin: '0 8px' }} />
-              <div style={{ width: 12, height: 12, background: 'black', borderRadius: '50%', display: 'inline-block', margin: '0 8px' }} />
+          {gameState !== 'PLAYING' && (
+            <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-10 text-center">
+              <div className="mb-8 relative">
+                <div className="absolute -inset-4 bg-lime-400/20 blur-xl rounded-full animate-pulse"></div>
+                <h1 className="relative text-6xl font-black italic text-white tracking-tighter">
+                  SKY<span className="text-lime-400">HOP</span>
+                  <div className="text-xs not-italic font-bold tracking-[0.5em] text-lime-400/50 mt-1 uppercase">Ultra Edition</div>
+                </h1>
+              </div>
+
+              {gameState === 'GAMEOVER' && (
+                <div className="mb-10 scale-110">
+                  <p className="text-rose-500 font-black uppercase tracking-tighter text-sm mb-1">Signal Lost at {currentScore}m</p>
+                  <div className="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-rose-500 w-full animate-pulse"></div>
+                  </div>
+                </div>
+              )}
+
+              <button 
+                onClick={initGame}
+                className="relative px-12 py-5 bg-white text-black font-black rounded-2xl hover:bg-lime-400 transition-all active:scale-95 group/btn"
+              >
+                <span className="relative z-10">{gameState === 'START' ? 'ENGAGE' : 'RETRY'}</span>
+                <div className="absolute inset-0 bg-lime-400 rounded-2xl scale-0 group-hover/btn:scale-110 opacity-0 group-hover/btn:opacity-20 transition-all duration-300"></div>
+              </button>
+
+              <div className="mt-12 grid grid-cols-2 gap-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-8 h-2 bg-red-500 rounded-full shadow-[0_0_10px_#ef4444]"></div>
+                  <span>Fragile</span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-8 h-2 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]"></div>
+                  <span>Moving</span>
+                </div>
+              </div>
             </div>
-            <h1 style={styles.title}>SKY HOP</h1>
-            <p style={{ color: '#64748b', marginBottom: '2rem', fontWeight: 600 }}>Use Arrow Keys to Climb</p>
-            <button 
-              style={styles.button()} 
-              onClick={initGame}
-              onMouseOver={e => e.target.style.transform = 'translateY(-4px)'}
-              onMouseOut={e => e.target.style.transform = 'translateY(0)'}
-            >
-              Start Hop
-            </button>
-          </div>
-        )}
+          )}
+        </div>
+      </div>
 
-        {gameState === 'GAME_OVER' && (
-          <div style={styles.overlay}>
-            <h2 style={{ fontSize: '3rem', fontWeight: 900, marginBottom: '0.5rem' }}>GAME OVER</h2>
-            <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
-              <p style={{ color: '#94a3b8', margin: 0 }}>You reached</p>
-              <p style={{ fontSize: '2.5rem', fontWeight: 900, color: '#bef264' }}>{score.toLocaleString()}m</p>
-            </div>
-            <button 
-              style={styles.button('#ef4444')} 
-              onClick={initGame}
-              onMouseOver={e => e.target.style.transform = 'translateY(-4px)'}
-              onMouseOut={e => e.target.style.transform = 'translateY(0)'}
-            >
-              Try Again
-            </button>
-          </div>
-        )}
+      <div className="mt-8 flex items-center gap-6 opacity-30 grayscale hover:grayscale-0 hover:opacity-100 transition-all duration-500">
+        <div className="text-[10px] font-black tracking-widest text-white border-x border-white/20 px-4">60 FPS ENGINE</div>
+        <div className="text-[10px] font-black tracking-widest text-white border-x border-white/20 px-4">PARTICLE PHYSICS</div>
+        <div className="text-[10px] font-black tracking-widest text-white border-x border-white/20 px-4">PROCEDURAL GEN</div>
       </div>
     </div>
   );
-};
-
-export default App;
+}
